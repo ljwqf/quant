@@ -1,0 +1,507 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
+}
+
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* 顶部导航 */
+.header {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logo h1 {
+    font-size: 1.5rem;
+    background: linear-gradient(90deg, #00d4ff, #7c3aed);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+
+.status-indicator::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-indicator.connected {
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+}
+
+.status-indicator.connected::before {
+    background: #00ff88;
+    box-shadow: 0 0 10px #00ff88;
+}
+
+.status-indicator.disconnected {
+    background: rgba(255, 68, 68, 0.1);
+    color: #ff4444;
+}
+
+.status-indicator.disconnected::before {
+    background: #ff4444;
+}
+
+/* 主要内容 */
+.main-content {
+    flex: 1;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.section {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.section h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* 卡片网格 */
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 212, 255, 0.1);
+}
+
+.card-title {
+    font-size: 0.875rem;
+    color: #888;
+    margin-bottom: 0.5rem;
+}
+
+.card-value {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.card-value.positive {
+    color: #00ff88;
+}
+
+.card-value.negative {
+    color: #ff4444;
+}
+
+.card-unit {
+    font-size: 0.75rem;
+    color: #666;
+    margin-top: 0.25rem;
+}
+
+.rebalance-events-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.rebalance-event-item {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-height: 132px;
+}
+
+.rebalance-event-item.open {
+    border-color: rgba(255, 68, 68, 0.35);
+}
+
+.rebalance-event-item.reset {
+    border-color: rgba(0, 212, 255, 0.28);
+}
+
+.rebalance-event-item.recover_started {
+    border-color: rgba(255, 193, 7, 0.28);
+}
+
+.rebalance-event-item.recover_succeeded {
+    border-color: rgba(0, 255, 136, 0.3);
+}
+
+.rebalance-event-item.recover_failed {
+    border-color: rgba(255, 68, 68, 0.32);
+}
+
+.rebalance-event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.rebalance-event-type {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+}
+
+.rebalance-event-type.open {
+    color: #ff7a7a;
+    background: rgba(255, 68, 68, 0.12);
+}
+
+.rebalance-event-type.reset {
+    color: #67d7ff;
+    background: rgba(0, 212, 255, 0.12);
+}
+
+.rebalance-event-type.recover_started {
+    color: #ffd35c;
+    background: rgba(255, 193, 7, 0.12);
+}
+
+.rebalance-event-type.recover_succeeded {
+    color: #62e4a8;
+    background: rgba(0, 255, 136, 0.12);
+}
+
+.rebalance-event-type.recover_failed {
+    color: #ff8a8a;
+    background: rgba(255, 68, 68, 0.12);
+}
+
+.rebalance-event-time {
+    color: #8b93aa;
+    font-size: 0.8rem;
+}
+
+.rebalance-event-title {
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.rebalance-event-message {
+    color: #d7ddf1;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.rebalance-event-meta,
+.rebalance-event-empty {
+    color: #8b93aa;
+    font-size: 0.85rem;
+}
+
+.rebalance-event-empty {
+    padding: 1rem 0;
+}
+
+/* 表格 */
+.table-container {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 0.875rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+th {
+    font-weight: 500;
+    color: #888;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    font-size: 0.875rem;
+}
+
+tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.loading {
+    text-align: center;
+    color: #666;
+    padding: 2rem !important;
+}
+
+/* 状态标签 */
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge.running {
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+}
+
+.badge.stopped {
+    background: rgba(255, 68, 68, 0.1);
+    color: #ff4444;
+}
+
+.badge.buy {
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+}
+
+.badge.sell {
+    background: rgba(255, 68, 68, 0.1);
+    color: #ff4444;
+}
+
+.badge.pending {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+.badge.filled {
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+}
+
+.badge.cancelled {
+    background: rgba(108, 117, 125, 0.1);
+    color: #6c757d;
+}
+
+/* 按钮 */
+.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: linear-gradient(90deg, #00d4ff, #7c3aed);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.btn-danger {
+    background: rgba(255, 68, 68, 0.1);
+    color: #ff4444;
+    border: 1px solid rgba(255, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+    background: rgba(255, 68, 68, 0.2);
+}
+
+.btn-success {
+    background: rgba(0, 255, 136, 0.1);
+    color: #00ff88;
+    border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+.btn-success:hover {
+    background: rgba(0, 255, 136, 0.2);
+}
+
+.btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* 手动交易面板 */
+.trade-panel {
+    position: fixed;
+    right: -400px;
+    top: 0;
+    width: 400px;
+    height: 100vh;
+    background: rgba(26, 26, 46, 0.98);
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    transition: right 0.3s ease;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+.trade-panel.open {
+    right: 0;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.panel-header h3 {
+    font-size: 1.25rem;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: #fff;
+}
+
+.panel-content {
+    flex: 1;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-group label {
+    font-size: 0.875rem;
+    color: #888;
+}
+
+.form-group select,
+.form-group input {
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.875rem;
+}
+
+.form-group select:focus,
+.form-group input:focus {
+    outline: none;
+    border-color: #00d4ff;
+}
+
+/* 浮动按钮 */
+.fab {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, #00d4ff, #7c3aed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
+    transition: transform 0.2s;
+    z-index: 999;
+}
+
+.fab:hover {
+    transform: scale(1.1);
+}
+
+.fab span {
+    font-size: 1.5rem;
+    color: #fff;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .header {
+        padding: 1rem;
+    }
+
+    .main-content {
+        padding: 1rem;
+    }
+
+    .cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .trade-panel {
+        width: 100%;
+        right: -100%;
+    }
+}

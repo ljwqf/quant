@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  okx-quant:
+    build: .
+    image: okx-quant:latest
+    container_name: okx-quant
+    restart: unless-stopped
+    volumes:
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+      - CONFIG_FILE=/app/configs/config.yaml
+    ports:
+      - "8080:8080"
+    networks:
+      - okx-quant-network
+
+  # 可选：添加Prometheus和Grafana用于监控
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - okx-quant-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - okx-quant-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  okx-quant-network:
+    driver: bridge
