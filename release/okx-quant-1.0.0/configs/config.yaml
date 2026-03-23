@@ -1,0 +1,107 @@
+# OKX量化交易系统配置
+
+# 基本配置
+basic:
+  app_name: "okx-quant"
+  env: "production"
+  log_level: "info"
+  log_file: "./logs/okx-quant.log"
+
+# 交易所配置
+exchange:
+  okx:              
+    api_key: "6a4fea48-f357-43c2-9c5a-b64d4af7d70d"
+    secret_key: "829FD32D70E7E605F95F824F63E0F7D1"
+    passphrase: "Ljwnb666@okx"
+    base_url: "https://www.okx.com"
+    ws_url: "wss://ws.okx.com:8443/ws/v5/public"
+    timeout: 30s
+    retry_count: 3
+    simulated: true  # 使用模拟盘模式
+
+# 风险管理配置
+risk:
+  enable: true
+  max_position_size: 10000
+  max_daily_loss: 1000
+  max_drawdown: 0.1
+  stop_loss_percent: 0.05
+  take_profit_percent: 0.1
+  max_trades_per_day: 100
+
+execution:
+  enable_strategy_take_profit: true
+  persistence:
+    enabled: true
+    directory: "./data/runtime"
+    snapshot_interval: 30s
+  smart_routing:
+    order_book_depth: 20
+    max_estimated_slippage: 0.0025
+  rebalance:
+    enabled: true
+    reduce_only: true
+    drift_threshold: 0.1
+    use_market_orders: true
+    max_positions_per_cycle: 2
+    circuit_auto_reset: true
+    circuit_cooldown: 15m
+  allocator:
+    min_weight: 0.1
+    max_weight: 0.7
+    weight_change_threshold: 0.15
+    cooldown_duration: 24h
+    rebalance_interval: 4h
+    portfolio_loss_limit: 0.05
+
+# 回测配置
+backtest:
+  enable: true
+  initial_balance: 10000
+  data_dir: "./data"
+  result_dir: "./results"
+
+# 监控配置
+monitoring:
+  enable: true
+  check_interval: 30s
+  alert_threshold:
+    max_drawdown: 0.15
+    max_loss: 1500
+    position_limit: 15000
+    order_timeout: 5m
+  metrics:
+    enable: true
+    push_gateway_url: ""
+  alert:
+    enable: true
+    channels:
+      - "console"
+      - "webhook"
+    webhook_url: ""
+    dedup_window: 30s
+    min_interval: 10s
+
+# 策略配置（策略开发之后再考虑）
+strategy:
+  enable: false
+  name: "example_strategy"
+  params:
+    param1: 1
+    param2: 2
+  delta_neutral:
+    fund_usage_percent: 0.9
+    rebalance_threshold: 0.02
+    basis_circuit_breaker: 0.01
+    target_hedge_ratio: 1.0
+    hedge_ratio_tolerance: 0.05
+    daily_loss_limit: 0.02
+    margin_buffer_percent: 0.1
+    settlement_window_before: 30m
+    settlement_window_after: 30m
+
+# 服务器配置
+server:
+  enable: true
+  port: 8765
+  host: "0.0.0.0"

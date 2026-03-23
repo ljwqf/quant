@@ -1,0 +1,499 @@
+openapi: 3.0.3
+info:
+  title: OKX Quant Trading API
+  description: OKX 量化交易系统 API 文档
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: 本地开发服务器
+
+paths:
+  /health:
+    get:
+      summary: 健康检查
+      responses:
+        '200':
+          description: 服务正常运行
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /ready:
+    get:
+      summary: 就绪检查
+      responses:
+        '200':
+          description: 服务已就绪
+        '503':
+          description: 服务未就绪
+
+  /api/status:
+    get:
+      summary: 获取系统状态
+      responses:
+        '200':
+          description: 系统状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  /api/strategies:
+    get:
+      summary: 获取策略列表
+      responses:
+        '200':
+          description: 策略列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StrategyStatus'
+
+  /api/positions:
+    get:
+      summary: 获取持仓列表
+      responses:
+        '200':
+          description: 持仓列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PositionInfo'
+
+  /api/orders:
+    get:
+      summary: 获取订单列表
+      responses:
+        '200':
+          description: 订单列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderInfo'
+
+  /api/signals:
+    get:
+      summary: 获取信号列表
+      responses:
+        '200':
+          description: 信号列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SignalInfo'
+
+  /api/strategy/start/{name}:
+    post:
+      summary: 启动策略
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 策略已启动
+
+  /api/strategy/stop/{name}:
+    post:
+      summary: 停止策略
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 策略已停止
+
+  /api/order/create:
+    post:
+      summary: 创建订单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: 订单已创建
+
+  /api/position/close/{symbol}:
+    post:
+      summary: 平仓
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 平仓成功
+
+  /api/manual/order:
+    post:
+      summary: 创建手动交易订单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateManualOrderRequest'
+      responses:
+        '200':
+          description: 订单已创建
+
+  /api/manual/order/{order_id}:
+    delete:
+      summary: 撤销手动交易订单
+      parameters:
+        - in: path
+          name: order_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 订单已撤销
+
+  /api/manual/orders:
+    get:
+      summary: 获取手动交易订单列表
+      parameters:
+        - in: query
+          name: symbol
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 订单列表
+
+  /api/manual/position/close:
+    post:
+      summary: 手动平仓
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClosePositionRequest'
+      responses:
+        '200':
+          description: 平仓成功
+
+  /api/manual/position/tp-sl:
+    post:
+      summary: 设置止盈止损
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetTpSlRequest'
+      responses:
+        '200':
+          description: 设置成功
+
+  /api/llm/analyze/trade:
+    post:
+      summary: 交易分析
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeTradeRequest'
+      responses:
+        '200':
+          description: 分析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+
+  /api/llm/analyze/positions:
+    get:
+      summary: 持仓分析
+      responses:
+        '200':
+          description: 分析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+
+  /api/llm/analyze/market:
+    post:
+      summary: 市场分析
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeMarketRequest'
+      responses:
+        '200':
+          description: 分析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+
+  /api/llm/history:
+    get:
+      summary: 获取分析历史
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 分析历史列表
+
+components:
+  schemas:
+    SystemStatus:
+      type: object
+      properties:
+        running:
+          type: boolean
+        exchange_connected:
+          type: boolean
+        start_time:
+          type: string
+          format: date-time
+        uptime:
+          type: string
+        account_balance:
+          type: number
+        total_pnl:
+          type: number
+        daily_pnl:
+          type: number
+        win_rate:
+          type: number
+        total_trades:
+          type: integer
+
+    StrategyStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+        running:
+          type: boolean
+        pnl:
+          type: number
+        win_rate:
+          type: number
+        trades:
+          type: integer
+        last_signal:
+          type: string
+        last_update:
+          type: string
+          format: date-time
+
+    PositionInfo:
+      type: object
+      properties:
+        symbol:
+          type: string
+        side:
+          type: string
+        size:
+          type: number
+        entry_price:
+          type: number
+        mark_price:
+          type: number
+        unrealized_pnl:
+          type: number
+        leverage:
+          type: integer
+        open_time:
+          type: string
+          format: date-time
+        strategy:
+          type: string
+
+    OrderInfo:
+      type: object
+      properties:
+        order_id:
+          type: string
+        symbol:
+          type: string
+        side:
+          type: string
+        type:
+          type: string
+        price:
+          type: number
+        size:
+          type: number
+        filled_size:
+          type: number
+        status:
+          type: string
+        create_time:
+          type: string
+          format: date-time
+        strategy:
+          type: string
+
+    SignalInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        strategy:
+          type: string
+        symbol:
+          type: string
+        side:
+          type: string
+        price:
+          type: number
+        size:
+          type: number
+        confidence:
+          type: number
+        reason:
+          type: string
+        time:
+          type: string
+          format: date-time
+        executed:
+          type: boolean
+
+    CreateOrderRequest:
+      type: object
+      required:
+        - symbol
+        - side
+        - type
+        - size
+      properties:
+        symbol:
+          type: string
+        side:
+          type: string
+        type:
+          type: string
+        price:
+          type: number
+        size:
+          type: number
+
+    CreateManualOrderRequest:
+      type: object
+      required:
+        - symbol
+        - side
+        - size
+      properties:
+        symbol:
+          type: string
+        side:
+          type: string
+        type:
+          type: string
+        price:
+          type: number
+        size:
+          type: number
+        leverage:
+          type: integer
+        take_profit:
+          type: number
+        stop_loss:
+          type: number
+        ai_analysis_id:
+          type: integer
+        ai_analysis_summary:
+          type: string
+
+    ClosePositionRequest:
+      type: object
+      required:
+        - symbol
+      properties:
+        symbol:
+          type: string
+        size:
+          type: number
+
+    SetTpSlRequest:
+      type: object
+      required:
+        - symbol
+      properties:
+        symbol:
+          type: string
+        take_profit:
+          type: number
+        stop_loss:
+          type: number
+
+    AnalyzeTradeRequest:
+      type: object
+      required:
+        - symbol
+        - side
+        - size
+      properties:
+        symbol:
+          type: string
+        side:
+          type: string
+        size:
+          type: number
+        price:
+          type: number
+
+    AnalyzeMarketRequest:
+      type: object
+      required:
+        - symbol
+      properties:
+        symbol:
+          type: string
+
+    AnalysisResult:
+      type: object
+      properties:
+        summary:
+          type: string
+        analysis:
+          type: string
+        risk_level:
+          type: string
