@@ -24,6 +24,8 @@ const (
 	AnalysisTypePosition AnalysisType = "position"
 	// AnalysisTypeMarket 市场概览分析
 	AnalysisTypeMarket AnalysisType = "market"
+	// AnalysisTypeOrders 订单分析
+	AnalysisTypeOrders AnalysisType = "orders"
 )
 
 // AnalysisResult 分析结果
@@ -253,6 +255,67 @@ func (a *Analyzer) AnalyzeMarket(ctx context.Context, symbols []string) (*Analys
 	result := &storage.AIAnalysis{
 		AnalysisType: string(AnalysisTypeMarket),
 		Symbol:       "market",
+		Content:      resp.Content,
+		Suggestions:  summary,
+		RiskLevel:    riskLevel,
+		CreatedAt:    time.Now(),
+	}
+
+	if err := a.aiRepo.Create(result); err != nil {
+		logger.Warn("保存分析结果失败", zap.Error(err))
+	}
+
+	return &AnalysisResult{
+		ID:        result.ID,
+		Type:      result.AnalysisType,
+		Symbol:    result.Symbol,
+		Content:   result.Content,
+		Summary:   result.Suggestions,
+		RiskLevel: result.RiskLevel,
+		CreatedAt: result.CreatedAt,
+	}, nil
+}
+
+// AnalyzeOrders 订单分析
+func (a *Analyzer) AnalyzeOrders(ctx context.Context, data *OrderData) (*AnalysisResult, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("大模型客户端未初始化")
+	}
+
+	template := GetOrderAnalysisPrompt(data)
+	messages := BuildMessages(template)
+
+	req := &providers.ChatRequest{
+		Model:       a.model,
+		Messages:    convertMessages(messages),
+		Temperature: 0.7,
+		MaxTokens:   2000,
+	}
+
+	resp, err := a.client.Chat(ctx, req)
+	if err != nil {
+		logger.Error("订单分析失败", zap.Error(err))
+		return nil, fmt.Errorf("订单分析失败: %w", err)
+	}
+
+	parsed := ParseAnalysisResult(resp.Content)
+	summary := parsed["改进建议"]
+	if summary == "" {
+		summary = parsed["执行质量"]
+	}
+	riskLevel := parsed["风险等级"]
+	if riskLevel == "" {
+		riskLevel = "medium"
+	}
+
+	symbol := data.Symbol
+	if symbol == "" {
+		symbol = "all"
+	}
+
+	result := &storage.AIAnalysis{
+		AnalysisType: string(AnalysisTypeOrders),
+		Symbol:       symbol,
 		Content:      resp.Content,
 		Suggestions:  summary,
 		RiskLevel:    riskLevel,

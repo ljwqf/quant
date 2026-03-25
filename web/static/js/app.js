@@ -823,7 +823,7 @@ async function analyzePositions() {
 
 // 市场分析
 async function analyzeMarket() {
-    const symbol = document.getElementById('llm-market-symbol').value;
+    const symbol = document.getElementById('llm-market-symbols').value;
     
     if (!symbol) {
         alert('请输入交易对');
@@ -839,6 +839,70 @@ async function analyzeMarket() {
             method: 'POST',
             headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ symbol })
+        });
+        
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || '分析失败');
+        }
+        
+        renderLLMResult(resultDiv, result);
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="error-text">分析失败: ${error.message}</div>`;
+        console.error('分析失败:', error);
+    } finally {
+        setLLMLoading(false);
+    }
+}
+
+// 订单分析
+async function analyzeOrders() {
+    const analysisType = document.getElementById('llm-orders-type').value;
+    const symbol = document.getElementById('llm-orders-symbol').value;
+    const timeRange = document.getElementById('llm-orders-time-range').value;
+    
+    setLLMLoading(true);
+    const resultDiv = document.getElementById('llm-orders-result');
+    resultDiv.innerHTML = '<div class="loading-text">AI 分析中，请稍候...</div>';
+    
+    try {
+        // 模拟订单数据（实际应用中应该从API获取）
+        const mockOrders = [
+            {
+                "order_id": "123456",
+                "symbol": "BTC-USDT",
+                "side": "buy",
+                "type": "market",
+                "price": 50000,
+                "size": 0.01,
+                "filled_size": 0.01,
+                "status": "filled",
+                "create_time": new Date().toISOString(),
+                "fill_price": 50050
+            },
+            {
+                "order_id": "123457",
+                "symbol": "ETH-USDT",
+                "side": "sell",
+                "type": "limit",
+                "price": 3000,
+                "size": 0.1,
+                "filled_size": 0.1,
+                "status": "filled",
+                "create_time": new Date().toISOString(),
+                "fill_price": 2995
+            }
+        ];
+        
+        const response = await fetch('/api/llm/analyze/orders', {
+            method: 'POST',
+            headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                orders: mockOrders,
+                time_range: timeRange,
+                analysis_type: analysisType,
+                symbol: symbol
+            })
         });
         
         const result = await response.json();

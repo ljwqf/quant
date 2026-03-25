@@ -374,6 +374,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/llm/analyze/trade", s.handleLLMAnalyzeTrade)
 	s.mux.HandleFunc("/api/llm/analyze/positions", s.handleLLMAnalyzePositions)
 	s.mux.HandleFunc("/api/llm/analyze/market", s.handleLLMAnalyzeMarket)
+	s.mux.HandleFunc("/api/llm/analyze/orders", s.handleLLMAnalyzeOrders)
 	s.mux.HandleFunc("/api/llm/history", s.handleLLMHistory)
 
 	// 数据采集服务API路由
@@ -1733,6 +1734,63 @@ func (s *Server) handleLLMAnalyzeMarket(w http.ResponseWriter, r *http.Request) 
 	result, err := analyzer.AnalyzeMarket(r.Context(), []string{req.Symbol})
 	if err != nil {
 		logger.Error("市场分析失败", zap.Error(err))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"summary":    result.Summary,
+		"analysis":   result.Content,
+		"risk_level": result.RiskLevel,
+	})
+}
+
+func (s *Server) handleLLMAnalyzeOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.requireMutationAccess(r); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	s.mutex.RLock()
+	analyzer := s.analyzer
+	s.mutex.RUnlock()
+
+	if analyzer == nil {
+		http.Error(w, "LLM analysis not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		Orders       []map[string]interface{} `json:"orders"`
+		TimeRange    string                   `json:"time_range"`
+		AnalysisType string                   `json:"analysis_type"`
+		Symbol       string                   `json:"symbol"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Orders) == 0 {
+		http.Error(w, "orders is required", http.StatusBadRequest)
+		return
+	}
+
+	data := &llmanalysis.OrderData{
+		Orders:       req.Orders,
+		TimeRange:    req.TimeRange,
+		AnalysisType: req.AnalysisType,
+		Symbol:       req.Symbol,
+	}
+
+	result, err := analyzer.AnalyzeOrders(r.Context(), data)
+	if err != nil {
+		logger.Error("订单分析失败", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
