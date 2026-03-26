@@ -11,23 +11,38 @@ import (
 
 // Client OKX 客户端
 type Client struct {
-	config         *config.OKXConfig
-	restClient     *restClient
-	wsClient       *wsClient
-	connected      bool
-	mutex          sync.RWMutex
-	tickerHandlers map[string][]func(*types.Tick)
-	barHandlers    map[string]map[string][]func(*types.Bar) // symbol -> interval -> handlers
-	orderBookHandlers map[string][]func(*types.OrderBook)
+	config             *config.OKXConfig
+	restClient         *restClient
+	wsClient           *wsClient
+	connected          bool
+	mutex              sync.RWMutex
+	tickerHandlers     map[string][]func(*types.Tick)
+	barHandlers        map[string]map[string][]func(*types.Bar) // symbol -> interval -> handlers
+	orderBookHandlers  map[string][]func(*types.OrderBook)
+	handlerConcurrency chan struct{}
 }
 
 // NewClient 创建 OKX 客户端
 func NewClient(cfg *config.OKXConfig) *Client {
 	return &Client{
-		config:            cfg,
-		tickerHandlers:    make(map[string][]func(*types.Tick)),
-		barHandlers:       make(map[string]map[string][]func(*types.Bar)),
-		orderBookHandlers: make(map[string][]func(*types.OrderBook)),
+		config:             cfg,
+		tickerHandlers:     make(map[string][]func(*types.Tick)),
+		barHandlers:        make(map[string]map[string][]func(*types.Bar)),
+		orderBookHandlers:  make(map[string][]func(*types.OrderBook)),
+		handlerConcurrency: make(chan struct{}, 256),
+	}
+}
+
+func (c *Client) runHandler(handler func()) {
+	select {
+	case c.handlerConcurrency <- struct{}{}:
+		go func() {
+			defer func() { <-c.handlerConcurrency }()
+			handler()
+		}()
+	default:
+		// Backpressure fallback to avoid unbounded goroutine growth.
+		handler()
 	}
 }
 
@@ -54,7 +69,8 @@ func (c *Client) Connect() error {
 
 	// 连接 WebSocket
 	if err := c.wsClient.connect(); err != nil {
-		logger.Warn("WebSocket 连接失败，将仅使用 REST API", zap.Error(err))
+		logger.Warn("WebSocket 连接失败，已切换 REST API 并启动后台重连", zap.Error(err))
+		c.wsClient.triggerReconnect()
 		c.connected = true
 		return nil
 	}
@@ -169,5 +185,3 @@ func (c *Client) SetLeverage(symbol string, leverage int, marginMode string) err
 
 	return c.restClient.setLeverage(symbol, leverage, marginMode)
 }
-
-

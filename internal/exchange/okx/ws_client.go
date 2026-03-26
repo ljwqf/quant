@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ const (
 	wsStateDisconnected int32 = 0
 	wsStateConnected    int32 = 1
 	wsStateReconnecting int32 = 2
+	maxReconnectAttempt       = 5
 )
 
 type wsClient struct {
@@ -49,14 +51,17 @@ type wsArg struct {
 
 func newWSClient(cfg *config.OKXConfig, messageHandler func([]byte)) (*wsClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &wsClient{
+	client := &wsClient{
 		config:         cfg,
 		messageHandler: messageHandler,
 		subscriptions:  make(map[string]bool),
 		reconnectChan:  make(chan struct{}, 1),
 		ctx:            ctx,
 		cancel:         cancel,
-	}, nil
+	}
+
+	go client.reconnectWorker()
+	return client, nil
 }
 
 func (w *wsClient) connect() error {
@@ -85,7 +90,6 @@ func (w *wsClient) connect() error {
 
 	go w.heartbeatLoop()
 	go w.readLoop()
-	go w.reconnectWorker()
 
 	logger.Info("WebSocket 连接成功")
 	return nil
@@ -190,13 +194,13 @@ func (w *wsClient) reconnectWorker() {
 }
 
 func (w *wsClient) doReconnect() {
-	if !atomic.CompareAndSwapInt32(&w.state, wsStateConnected, wsStateReconnecting) {
+	for {
 		currentState := atomic.LoadInt32(&w.state)
 		if currentState == wsStateReconnecting {
 			return
 		}
-		if currentState == wsStateDisconnected {
-			return
+		if atomic.CompareAndSwapInt32(&w.state, currentState, wsStateReconnecting) {
+			break
 		}
 	}
 
@@ -209,7 +213,7 @@ func (w *wsClient) doReconnect() {
 	}
 	w.connMutex.Unlock()
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < maxReconnectAttempt; i++ {
 		select {
 		case <-w.ctx.Done():
 			return
@@ -325,8 +329,11 @@ func (w *wsClient) resubscribe() {
 	w.mutex.Unlock()
 
 	for key := range subs {
-		var channel, symbol, interval string
-		fmt.Sscanf(key, "%s:%s:%s", &channel, &symbol, &interval)
+		channel, symbol, interval, ok := parseSubscriptionKey(key)
+		if !ok {
+			logger.Warn("忽略无效订阅键", zap.String("key", key))
+			continue
+		}
 		if err := w.subscribe(channel, symbol, interval); err != nil {
 			logger.Error("重新订阅失败",
 				zap.Error(err),
@@ -336,6 +343,17 @@ func (w *wsClient) resubscribe() {
 			)
 		}
 	}
+}
+
+func parseSubscriptionKey(key string) (channel, symbol, interval string, ok bool) {
+	parts := strings.SplitN(key, ":", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
 
 func (w *wsClient) isConnected() bool {
