@@ -12,10 +12,10 @@ import (
 
 // ClaudeProvider Claude (Anthropic) 提供商
 type ClaudeProvider struct {
-	apiKey   string
-	baseURL  string
-	client   *http.Client
-	timeout  time.Duration
+	apiKey  string
+	baseURL string
+	client  *http.Client
+	timeout time.Duration
 }
 
 // NewClaudeProvider 创建 Claude 提供商
@@ -52,9 +52,9 @@ type claudeResponse struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
-	StopReason string `json:"stop_reason"`
+	StopReason   string `json:"stop_reason"`
 	StopSequence string `json:"stop_sequence"`
-	Usage struct {
+	Usage        struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
@@ -101,11 +101,16 @@ func (p *ClaudeProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatRespo
 	if err != nil {
 		return nil, fmt.Errorf("发送请求失败: %w", err)
 	}
-	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("读取响应失败: %w (close body: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return nil, fmt.Errorf("关闭响应体失败: %w", closeErr)
 	}
 
 	if resp.StatusCode != http.StatusOK {

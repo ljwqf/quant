@@ -692,6 +692,13 @@ func (s *NeedleStrategy) generateSignal(bar *types.Bar, divergence DivergenceTyp
 		marketState = s.smartFilter.GetMarketState().State.String()
 	}
 
+	metadata := map[string]interface{}{
+		"divergence":   divergence.String(),
+		"take_profit":  takeProfit,
+		"stop_loss":    stopLoss,
+		"market_state": marketState,
+	}
+
 	signal := &types.Signal{
 		Strategy:   s.name,
 		Symbol:     bar.Symbol,
@@ -699,16 +706,10 @@ func (s *NeedleStrategy) generateSignal(bar *types.Bar, divergence DivergenceTyp
 		Price:      entryPrice,
 		Confidence: 0.7,
 		Timestamp:  time.Now(),
-		Metadata: map[string]interface{}{
-			"divergence":   divergence.String(),
-			"take_profit":  takeProfit,
-			"stop_loss":    stopLoss,
-			"market_state": marketState,
-		},
+		Metadata:   metadata,
 	}
 
 	// 安全地添加指标数据
-	metadata := signal.Metadata.(map[string]interface{})
 	if s.supertrend != nil {
 		metadata["supertrend"] = s.supertrend.Value
 	}

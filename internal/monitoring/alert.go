@@ -189,13 +189,13 @@ func (am *AlertManager) getSeverity(alertType AlertType) int {
 	}
 }
 
-// sendToConsole 发送到控制台
+// sendToConsole 发送到控制台（记录到日志）
 func (am *AlertManager) sendToConsole(alert Alert) {
-	fmt.Printf("[%s] [%s] %s: %s\n",
-		alert.Timestamp.Format("2006-01-02 15:04:05"),
-		alert.Type,
-		alert.Title,
-		alert.Message,
+	logger.Info("告警通知",
+		zap.String("timestamp", alert.Timestamp.Format("2006-01-02 15:04:05")),
+		zap.String("type", string(alert.Type)),
+		zap.String("title", alert.Title),
+		zap.String("message", alert.Message),
 	)
 }
 
@@ -240,13 +240,18 @@ func (am *AlertManager) sendToWebhook(alert Alert, fingerprint string) {
 		logger.Warn("发送Webhook告警失败", zap.Error(err), zap.String("url", am.config.WebhookURL))
 		return
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Warn("关闭Webhook响应体失败", zap.Error(closeErr), zap.String("url", am.config.WebhookURL))
+		}
 		logger.Warn("Webhook告警返回非成功状态",
 			zap.String("url", am.config.WebhookURL),
 			zap.Int("status_code", resp.StatusCode),
 		)
 		return
+	}
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		logger.Warn("关闭Webhook响应体失败", zap.Error(closeErr), zap.String("url", am.config.WebhookURL))
 	}
 	logger.Info("发送告警到Webhook",
 		zap.String("url", am.config.WebhookURL),

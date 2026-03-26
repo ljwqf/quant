@@ -1,11 +1,12 @@
 package strategy
 
 import (
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMMPEngineUsesOrderBookSpread(t *testing.T) {
@@ -49,4 +50,50 @@ func TestMMPEngineGeneratesShortSignalOnNegativeDelta(t *testing.T) {
 	if assert.NotNil(t, signal) {
 		assert.Equal(t, types.SignalTypeSell, signal.Type)
 	}
+}
+
+func TestMMPEngineRecordTradeResetsDailyLossOnNewDay(t *testing.T) {
+	engine := NewMMPEnginePro()
+	defer engine.Stop()
+
+	oldDay := time.Date(2025, 12, 31, 23, 59, 0, 0, time.UTC)
+	newDay := oldDay.Add(2 * time.Minute)
+
+	engine.dailyLoss = 0.04
+	engine.dailyLossReset = oldDay
+	engine.nowFunc = func() time.Time { return newDay }
+
+	engine.RecordTrade(-0.01)
+
+	assert.InDelta(t, 0.01, engine.dailyLoss, 1e-9)
+	assert.Equal(t, newDay, engine.dailyLossReset)
+}
+
+func TestMMPEngineCircuitBreakerResetsStaleDailyLoss(t *testing.T) {
+	engine := NewMMPEnginePro()
+	defer engine.Stop()
+
+	oldDay := time.Date(2026, 1, 31, 23, 59, 0, 0, time.UTC)
+	newDay := time.Date(2026, 2, 1, 0, 1, 0, 0, time.UTC)
+
+	engine.dailyLoss = DailyLossLimit
+	engine.dailyLossReset = oldDay
+	engine.nowFunc = func() time.Time { return newDay }
+
+	assert.False(t, engine.checkCircuitBreaker())
+	assert.Equal(t, 0.0, engine.dailyLoss)
+	assert.Equal(t, newDay, engine.dailyLossReset)
+}
+
+func TestMMPEngineOnTickHandlesUnexpectedPoolValue(t *testing.T) {
+	engine := NewMMPEnginePro()
+	defer engine.Stop()
+	engine.state = MMPStateActive
+	engine.nowFunc = func() time.Time { return time.Date(2026, 3, 26, 1, 2, 0, 0, time.UTC) }
+	engine.tickPool = &sync.Pool{New: func() interface{} { return "bad" }}
+
+	assert.NotPanics(t, func() {
+		_, err := engine.OnTick(&types.Tick{Symbol: "BTC-USDT", Price: 100, Size: 1, Timestamp: engine.nowFunc()})
+		assert.NoError(t, err)
+	})
 }

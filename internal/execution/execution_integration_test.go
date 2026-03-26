@@ -2,15 +2,16 @@ package execution
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/internal/risk"
 	"github.com/ljwqf/quant/internal/strategy"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type flowStrategy struct {
@@ -78,6 +79,7 @@ func (s *flowStrategy) ConfirmRebalanceEntry(request *strategy.RebalanceRequest)
 }
 
 type flowExchangeStub struct {
+	mu                sync.RWMutex
 	nextOrderID       int
 	placedOrders      []*types.Order
 	pending           map[string]*types.Order
@@ -123,10 +125,21 @@ func newFlowExchangeStub() *flowExchangeStub {
 	return stub
 }
 
-func (s *flowExchangeStub) Connect() error                      { return nil }
-func (s *flowExchangeStub) Disconnect() error                   { return nil }
-func (s *flowExchangeStub) GetAccount() (*types.Account, error) { return s.account, nil }
+func (s *flowExchangeStub) Connect() error    { return nil }
+func (s *flowExchangeStub) Disconnect() error { return nil }
+func (s *flowExchangeStub) GetAccount() (*types.Account, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.account == nil {
+		return nil, nil
+	}
+	account := *s.account
+	return &account, nil
+}
 func (s *flowExchangeStub) PlaceOrder(order *types.Order) (*types.OrderResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err, ok := s.failOnPlaceBySide[order.Symbol+":"+string(order.Side)]; ok {
 		return nil, err
 	}
@@ -142,6 +155,9 @@ func (s *flowExchangeStub) PlaceOrder(order *types.Order) (*types.OrderResult, e
 	return &types.OrderResult{OrderID: orderID, Symbol: order.Symbol, Side: order.Side, Type: order.Type, Quantity: order.Quantity, Price: order.Price, Status: types.OrderStatusPending, Timestamp: time.Now()}, nil
 }
 func (s *flowExchangeStub) CancelOrder(orderID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if pending, exists := s.pending[orderID]; exists {
 		if err, shouldFail := s.failCancelSymbols[pending.Symbol]; shouldFail {
 			s.cancelledIDs = append(s.cancelledIDs, orderID)
@@ -153,6 +169,9 @@ func (s *flowExchangeStub) CancelOrder(orderID string) error {
 	return nil
 }
 func (s *flowExchangeStub) GetOrder(orderID string) (*types.Order, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if snapshots, ok := s.orderSnapshots[orderID]; ok && len(snapshots) > 0 {
 		index := s.getOrderCalls[orderID]
 		if index >= len(snapshots) {
@@ -210,6 +229,9 @@ func (s *flowExchangeStub) GetOrders(symbol string, limit int) ([]*types.Order, 
 	return nil, nil
 }
 func (s *flowExchangeStub) GetPositions() ([]*types.Position, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	positions := make([]*types.Position, 0, len(s.positions))
 	for _, position := range s.positions {
 		copyPosition := *position
@@ -230,9 +252,15 @@ func (s *flowExchangeStub) GetBars(symbol string, interval string, limit int) ([
 	return nil, nil
 }
 func (s *flowExchangeStub) GetTicker(symbol string) (*types.Tick, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return &types.Tick{Symbol: symbol, Price: s.tickerPrices[symbol], Timestamp: time.Now()}, nil
 }
 func (s *flowExchangeStub) GetOrderBook(symbol string, depth int) (*types.OrderBook, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if orderBook, ok := s.orderBooks[symbol]; ok {
 		return orderBook, nil
 	}

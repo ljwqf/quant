@@ -16,24 +16,24 @@ import (
 const (
 	// APIBaseURL is the base URL for CryptoQuant API
 	APIBaseURL = "https://api.cryptoquant.com/v1"
-	
+
 	// DefaultCacheDuration is the default cache duration
 	DefaultCacheDuration = 1 * time.Hour
-	
+
 	// DefaultRequestInterval is the default interval between requests
 	DefaultRequestInterval = 60 * time.Second
 )
 
 // Client is a CryptoQuant API client
 type Client struct {
-	apiKey           string
-	client           *http.Client
-	cache            map[string]cacheItem
-	cacheMutex       sync.RWMutex
-	lastRequestTime  time.Time
-	requestMutex     sync.Mutex
-	cacheDuration    time.Duration
-	requestInterval  time.Duration
+	apiKey          string
+	client          *http.Client
+	cache           map[string]cacheItem
+	cacheMutex      sync.RWMutex
+	lastRequestTime time.Time
+	requestMutex    sync.Mutex
+	cacheDuration   time.Duration
+	requestInterval time.Duration
 }
 
 // cacheItem is a cached API response
@@ -67,10 +67,10 @@ func (c *Client) SetRequestInterval(interval time.Duration) {
 func (c *Client) GetExchangeFlow(asset string) (float64, error) {
 	endpoint := fmt.Sprintf("/exchange/flow")
 	params := map[string]string{
-		"asset":     asset,
-		"exchange":  "all",
-		"window":    "1d",
-		"limit":     "1",
+		"asset":    asset,
+		"exchange": "all",
+		"window":   "1d",
+		"limit":    "1",
 	}
 
 	result, err := c.get(endpoint, params)
@@ -112,9 +112,9 @@ func (c *Client) GetExchangeFlow(asset string) (float64, error) {
 func (c *Client) GetSOPR(asset string) (float64, error) {
 	endpoint := fmt.Sprintf("/onchain/sopr")
 	params := map[string]string{
-		"asset":     asset,
-		"window":    "1d",
-		"limit":     "1",
+		"asset":  asset,
+		"window": "1d",
+		"limit":  "1",
 	}
 
 	result, err := c.get(endpoint, params)
@@ -156,9 +156,9 @@ func (c *Client) GetSOPR(asset string) (float64, error) {
 func (c *Client) GetMVRV(asset string) (float64, error) {
 	endpoint := fmt.Sprintf("/onchain/mvrv")
 	params := map[string]string{
-		"asset":     asset,
-		"window":    "1d",
-		"limit":     "1",
+		"asset":  asset,
+		"window": "1d",
+		"limit":  "1",
 	}
 
 	result, err := c.get(endpoint, params)
@@ -263,18 +263,30 @@ func (c *Client) get(endpoint string, params map[string]string) (interface{}, er
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		closeErr := resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("API error: status=%d, read body failed: %w", resp.StatusCode, readErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("API error: status=%d, body=%s (close body failed: %v)", resp.StatusCode, string(body), closeErr)
+		}
 		return nil, fmt.Errorf("API error: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("读取API响应失败: %w (close body failed: %v)", err, closeErr)
+		}
 		return nil, err
+	}
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return nil, fmt.Errorf("关闭API响应体失败: %w", closeErr)
 	}
 
 	// Parse response

@@ -71,6 +71,7 @@ type MMPEnginePro struct {
 	executionChan     chan *ExecutionRequest
 	stopChan          chan struct{}
 	signalCallback    func(*types.Signal) // 信号回调函数
+	nowFunc           func() time.Time
 }
 
 type OIData struct {
@@ -102,7 +103,9 @@ func NewMMPEnginePro() *MMPEnginePro {
 		signalChan:    make(chan *types.Signal, 100),
 		executionChan: make(chan *ExecutionRequest, 10),
 		stopChan:      make(chan struct{}),
+		nowFunc:       time.Now,
 	}
+	engine.dailyLossReset = engine.nowFunc()
 
 	engine.tickPool = &sync.Pool{
 		New: func() interface{} {
@@ -159,7 +162,10 @@ func (e *MMPEnginePro) OnTick(tick *types.Tick) (*types.Signal, error) {
 		return nil, nil
 	}
 
-	tickData := e.tickPool.Get().(*TickData)
+	tickData, ok := e.tickPool.Get().(*TickData)
+	if !ok || tickData == nil {
+		tickData = &TickData{}
+	}
 	tickData.Price = tick.Price
 	tickData.Volume = tick.Size
 	tickData.Bid = tick.Price
@@ -279,21 +285,17 @@ func (e *MMPEnginePro) checkTimeWindow() bool {
 }
 
 func (e *MMPEnginePro) checkCircuitBreaker() bool {
+	e.resetDailyLossIfNeeded(e.nowFunc())
+
 	if e.consecutiveLosses >= ConsecutiveLossLimit {
-		if time.Since(e.lastLossTime) < LossPauseDuration {
+		if e.nowFunc().Sub(e.lastLossTime) < LossPauseDuration {
 			return true
 		}
 		e.consecutiveLosses = 0
 	}
 
 	if e.dailyLoss >= DailyLossLimit {
-		now := time.Now()
-		if !isSameDay(now, e.dailyLossReset) {
-			e.dailyLoss = 0
-			e.dailyLossReset = now
-		} else {
-			return true
-		}
+		return true
 	}
 
 	return false
@@ -515,6 +517,7 @@ func (e *MMPEnginePro) UpdateOIData(value float64) {
 func (e *MMPEnginePro) RecordTrade(pnl float64) {
 	e.metricsMutex.Lock()
 	defer e.metricsMutex.Unlock()
+	e.resetDailyLossIfNeeded(e.nowFunc())
 
 	e.tradeCount++
 	e.totalPnL += pnl
@@ -524,12 +527,19 @@ func (e *MMPEnginePro) RecordTrade(pnl float64) {
 		e.consecutiveLosses = 0
 	} else {
 		e.consecutiveLosses++
-		e.lastLossTime = time.Now()
+		e.lastLossTime = e.nowFunc()
 	}
 
 	e.dailyLoss += -pnl
 	if e.dailyLoss < 0 {
 		e.dailyLoss = 0
+	}
+}
+
+func (e *MMPEnginePro) resetDailyLossIfNeeded(now time.Time) {
+	if e.dailyLossReset.IsZero() || !isSameDay(now, e.dailyLossReset) {
+		e.dailyLoss = 0
+		e.dailyLossReset = now
 	}
 }
 

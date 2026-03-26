@@ -99,12 +99,18 @@ func (r *restClient) request(method, endpoint string, params map[string]interfac
 	if err != nil {
 		return nil, fmt.Errorf("发送请求失败: %w", err)
 	}
-	defer resp.Body.Close()
 
 	// 读取响应
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("读取响应失败: %w (close body: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return nil, fmt.Errorf("关闭响应体失败: %w", closeErr)
 	}
 
 	// 检查响应状态
@@ -452,7 +458,7 @@ func (r *restClient) getOrderBook(symbol string, depth int) (*types.OrderBook, e
 	}
 
 	return orderBook, nil
-	}
+}
 
 // setLeverage 调整杠杆
 func (r *restClient) setLeverage(symbol string, leverage int, marginMode string) error {
@@ -461,9 +467,9 @@ func (r *restClient) setLeverage(symbol string, leverage int, marginMode string)
 	}
 
 	data := map[string]interface{}{
-		"instId":   symbol,
-		"lever":    leverage,
-		"mgnMode":  marginMode,
+		"instId":  symbol,
+		"lever":   leverage,
+		"mgnMode": marginMode,
 	}
 
 	respBody, err := r.request("POST", "/account/set-leverage", nil, data)

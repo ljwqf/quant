@@ -87,6 +87,7 @@ type DeltaNeutralFundingPro struct {
 	fundingIncome          float64
 	tradeCount             int
 	metricsMutex           sync.Mutex
+	nowFunc                func() time.Time
 	stopChan               chan struct{}
 	rebalanceChan          chan struct{}
 	killSwitchChan         chan struct{}
@@ -94,7 +95,7 @@ type DeltaNeutralFundingPro struct {
 }
 
 func NewDeltaNeutralFundingPro() *DeltaNeutralFundingPro {
-	return &DeltaNeutralFundingPro{
+	strategy := &DeltaNeutralFundingPro{
 		name:                   "DeltaNeutralFunding-Pro",
 		params:                 make(map[string]interface{}),
 		metrics:                make(map[string]interface{}),
@@ -110,10 +111,13 @@ func NewDeltaNeutralFundingPro() *DeltaNeutralFundingPro {
 		settlementWindowAfter:  SettlementWindowAfter,
 		spotSymbol:             "BTC-USDT",
 		perpSymbol:             "BTC-USDT-SWAP",
+		nowFunc:                time.Now,
 		stopChan:               make(chan struct{}),
 		rebalanceChan:          make(chan struct{}, 1),
 		killSwitchChan:         make(chan struct{}, 1),
 	}
+	strategy.dailyLossReset = strategy.nowFunc()
+	return strategy
 }
 
 func (e *DeltaNeutralFundingPro) Name() string {
@@ -383,7 +387,7 @@ func (e *DeltaNeutralFundingPro) isInSettlementWindow() bool {
 		return false
 	}
 
-	now := time.Now()
+	now := e.nowFunc()
 	settlementTime := e.fundingData.NextSettlement
 
 	if now.After(settlementTime.Add(-e.settlementWindowBefore)) &&
@@ -395,14 +399,10 @@ func (e *DeltaNeutralFundingPro) isInSettlementWindow() bool {
 }
 
 func (e *DeltaNeutralFundingPro) checkCircuitBreaker() bool {
+	e.resetDailyLossIfNeeded(e.nowFunc())
+
 	if e.dailyLoss >= e.dailyLossLimit {
-		now := time.Now()
-		if !isSameDay(now, e.dailyLossReset) {
-			e.dailyLoss = 0
-			e.dailyLossReset = now
-		} else {
-			return true
-		}
+		return true
 	}
 
 	basis := e.calculateBasis()
@@ -588,10 +588,18 @@ func (e *DeltaNeutralFundingPro) RecordFundingIncome(income float64) {
 func (e *DeltaNeutralFundingPro) RecordPnL(pnl float64) {
 	e.metricsMutex.Lock()
 	defer e.metricsMutex.Unlock()
+	e.resetDailyLossIfNeeded(e.nowFunc())
 
 	e.totalPnL += pnl
 	if pnl < 0 {
 		e.dailyLoss += -pnl
+	}
+}
+
+func (e *DeltaNeutralFundingPro) resetDailyLossIfNeeded(now time.Time) {
+	if e.dailyLossReset.IsZero() || !isSameDay(now, e.dailyLossReset) {
+		e.dailyLoss = 0
+		e.dailyLossReset = now
 	}
 }
 

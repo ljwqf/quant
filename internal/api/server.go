@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -388,9 +389,7 @@ func (s *Server) setupRoutes() {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
 	})
 }
@@ -419,13 +418,11 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 		checks["exchange"] = "connected"
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if ready {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
+	statusCode := http.StatusOK
+	if !ready {
+		statusCode = http.StatusServiceUnavailable
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, statusCode, map[string]interface{}{
 		"ready":  ready,
 		"checks": checks,
 	})
@@ -554,47 +551,41 @@ func (s *Server) AddOrder(order *OrderInfo) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.systemStatus)
+	writeJSON(w, http.StatusOK, s.systemStatus)
 }
 
 func (s *Server) handleStrategies(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
 	strategies := make([]*StrategyStatus, 0)
 	for _, st := range s.strategies {
 		strategies = append(strategies, st)
 	}
-	json.NewEncoder(w).Encode(strategies)
+	writeJSON(w, http.StatusOK, strategies)
 }
 
 func (s *Server) handlePositions(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.positions)
+	writeJSON(w, http.StatusOK, s.positions)
 }
 
 func (s *Server) handleOrders(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.orders)
+	writeJSON(w, http.StatusOK, s.orders)
 }
 
 func (s *Server) handleSignals(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.signals)
+	writeJSON(w, http.StatusOK, s.signals)
 }
 
 func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.systemStatus)
+	writeJSON(w, http.StatusOK, s.systemStatus)
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -848,13 +839,21 @@ func (s *Server) handleRebalanceCircuitReset(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var req resetRebalanceCircuitRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	resetReason := strings.TrimSpace(req.Reason)
 	state, err := s.actions.ResetRebalanceCircuit(resetReason)
 	if err != nil {
 		currentState := (*RebalanceCircuitInfo)(nil)
 		if s.actions.GetRebalanceCircuit != nil {
-			currentState, _ = s.actions.GetRebalanceCircuit()
+			state, stateErr := s.actions.GetRebalanceCircuit()
+			if stateErr != nil {
+				logger.Warn("获取重置失败后的熔断状态失败", zap.Error(stateErr))
+			} else {
+				currentState = state
+			}
 		}
 		s.BroadcastRebalanceCircuitReset(&RebalanceCircuitResetEvent{
 			Success:   false,
@@ -984,9 +983,18 @@ func shouldPreserveSecret(value string) bool {
 }
 
 func (s *Server) requireMutationAccess(r *http.Request) error {
-	if s.isTrustedRequest(r) || s.hasValidToken(r.Header.Get("X-API-Token")) {
+	if s.hasValidToken(r.Header.Get("X-API-Token")) {
 		return nil
 	}
+
+	if s.apiToken != "" || s.forceToken {
+		return fmt.Errorf("mutation endpoint requires a valid X-API-Token")
+	}
+
+	if s.isTrustedRequest(r) {
+		return nil
+	}
+
 	return fmt.Errorf("mutation endpoint requires trusted access or a valid X-API-Token")
 }
 
@@ -1043,7 +1051,8 @@ func (s *Server) isTrustedRequest(r *http.Request) bool {
 }
 
 func (s *Server) authenticateRequest(w http.ResponseWriter, r *http.Request) bool {
-	if s.isTrustedRequest(r) {
+	requireToken := s.apiToken != "" || s.forceToken
+	if !requireToken && s.isTrustedRequest(r) {
 		return true
 	}
 
@@ -1075,7 +1084,9 @@ func (s *Server) authenticateRequest(w http.ResponseWriter, r *http.Request) boo
 func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		logger.Warn("写入JSON响应失败", zap.Error(err), zap.Int("status_code", statusCode))
+	}
 }
 
 // 手动交易处理函数

@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func readWSMessage(t *testing.T, server *Server) WSMessage {
@@ -87,6 +87,23 @@ func TestSaveConfigRejectsRemoteWithoutToken(t *testing.T) {
 	assert.Equal(t, original.Basic.AppName, s.cfg.Basic.AppName)
 }
 
+func TestSaveConfigRejectsLocalWithoutTokenWhenAPITokenConfigured(t *testing.T) {
+	t.Setenv("OKX_QUANT_API_TOKEN", "token-123")
+	original := testConfig()
+	s := NewServer("127.0.0.1", 8765, original, "", nil)
+
+	updated := testConfig()
+	updated.Basic.AppName = "should-not-apply"
+	payload, err := json.Marshal(updated)
+	require.NoError(t, err)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/config", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "valid X-API-Token")
+	assert.Equal(t, original.Basic.AppName, s.cfg.Basic.AppName)
+}
+
 func TestSaveConfigRejectsInvalidConfig(t *testing.T) {
 	original := testConfig()
 	s := NewServer("127.0.0.1", 8765, original, "", nil)
@@ -113,6 +130,21 @@ func TestRemoteStrategyStartRequiresToken(t *testing.T) {
 	})
 
 	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/start/NeedleStrategy", nil, "203.0.113.10:4321", nil)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.False(t, called)
+}
+
+func TestLocalStrategyStartRequiresTokenWhenAPITokenConfigured(t *testing.T) {
+	t.Setenv("OKX_QUANT_API_TOKEN", "token-123")
+	called := false
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		StartStrategy: func(name string) (*StrategyStatus, error) {
+			called = true
+			return &StrategyStatus{Name: name, Running: true, Enabled: true}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/start/NeedleStrategy", nil, "127.0.0.1:12345", nil)
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 	assert.False(t, called)
 }
@@ -407,6 +439,23 @@ func TestWebSocketAllowsTokenWithSameOrigin(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
 	require.NoError(t, conn.Close())
+}
+
+func TestHealthEndpointReturnsOK(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/health", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"status":"ok"`)
+}
+
+func TestReadyEndpointReturnsUnavailableWhenSystemNotRunning(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/ready", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"ready":false`)
+	assert.Contains(t, recorder.Body.String(), `"system_status":"not running"`)
 }
 
 func performRequest(t *testing.T, server *Server, method, path string, body *bytes.Reader, remoteAddr string, headers map[string]string) *httptest.ResponseRecorder {

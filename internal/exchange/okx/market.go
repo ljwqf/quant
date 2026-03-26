@@ -2,6 +2,7 @@ package okx
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/ljwqf/quant/pkg/logger"
@@ -80,13 +81,75 @@ func (c *Client) handleWSMessage(msg []byte) {
 	case "unsubscribe":
 		// 取消订阅确认，无需处理
 	default:
+		var arg wsArg
+		if len(message.Arg) > 0 {
+			if err := json.Unmarshal(message.Arg, &arg); err != nil {
+				logger.Warn("解析 WebSocket arg 失败", zap.Error(err))
+			}
+		}
 		// 市场数据消息
-		c.handleMarketData(message.Data)
+		c.handleMarketData(arg.Channel, message.Data)
 	}
 }
 
 // handleMarketData 处理市场数据
-func (c *Client) handleMarketData(data json.RawMessage) {
+func (c *Client) handleMarketData(channel string, data json.RawMessage) {
+	if strings.HasPrefix(channel, "ticker") {
+		var tickerData []struct {
+			InstId  string `json:"instId"`
+			Last    string `json:"last"`
+			Open24h string `json:"open24h"`
+			High24h string `json:"high24h"`
+			Low24h  string `json:"low24h"`
+			Vol24h  string `json:"vol24h"`
+			Ts      string `json:"ts"`
+		}
+		if err := json.Unmarshal(data, &tickerData); err == nil && len(tickerData) > 0 {
+			for i := range tickerData {
+				item := tickerData[i]
+				if item.InstId == "" {
+					continue
+				}
+				c.handleTickerData(&item)
+			}
+			return
+		}
+	}
+
+	if strings.HasPrefix(channel, "candle") {
+		var candleData []struct {
+			InstId string   `json:"instId"`
+			Candle []string `json:"candle"`
+			Bar    string   `json:"bar"`
+		}
+
+		if err := json.Unmarshal(data, &candleData); err == nil && len(candleData) > 0 {
+			c.handleCandleData(candleData)
+			return
+		}
+	}
+
+	if strings.HasPrefix(channel, "books") {
+		var bookData []struct {
+			InstId   string     `json:"instId"`
+			Asks     [][]string `json:"asks"`
+			Bids     [][]string `json:"bids"`
+			Ts       string     `json:"ts"`
+			Checksum string     `json:"checksum"`
+		}
+		if err := json.Unmarshal(data, &bookData); err == nil && len(bookData) > 0 {
+			for i := range bookData {
+				item := bookData[i]
+				if item.InstId == "" {
+					continue
+				}
+				c.handleBookData(&item)
+			}
+			return
+		}
+	}
+
+	// Fallback for older payloads without channel info.
 	// 尝试解析为行情数据
 	var tickerData struct {
 		InstId  string `json:"instId"`
@@ -117,11 +180,11 @@ func (c *Client) handleMarketData(data json.RawMessage) {
 
 	// 尝试解析为订单簿数据
 	var bookData struct {
-		InstId  string      `json:"instId"`
-		Asks    [][]string  `json:"asks"`
-		Bids    [][]string  `json:"bids"`
-		Ts      string      `json:"ts"`
-		Checksum string      `json:"checksum"`
+		InstId   string     `json:"instId"`
+		Asks     [][]string `json:"asks"`
+		Bids     [][]string `json:"bids"`
+		Ts       string     `json:"ts"`
+		Checksum string     `json:"checksum"`
 	}
 
 	if err := json.Unmarshal(data, &bookData); err == nil && bookData.InstId != "" {
@@ -170,7 +233,10 @@ func (c *Client) handleTickerData(data *struct {
 	c.mutex.RUnlock()
 
 	for _, handler := range handlers {
-		go handler(tick)
+		h := handler
+		c.runHandler(func() {
+			h(tick)
+		})
 	}
 }
 
@@ -217,7 +283,10 @@ func (c *Client) handleCandleData(data []struct {
 
 		if ok {
 			for _, handler := range handlers {
-				go handler(bar)
+				h := handler
+				c.runHandler(func() {
+					h(bar)
+				})
 			}
 		}
 	}
@@ -281,6 +350,9 @@ func (c *Client) handleBookData(data *struct {
 	c.mutex.RUnlock()
 
 	for _, handler := range handlers {
-		go handler(orderBook)
+		h := handler
+		c.runHandler(func() {
+			h(orderBook)
+		})
 	}
 }

@@ -21,6 +21,7 @@ type Engine struct {
 	mutex           sync.RWMutex
 	stopChan        chan struct{}
 	stopOnce        sync.Once
+	nowFunc         func() time.Time
 }
 
 func NewEngine(cfg *config.RiskConfig) *Engine {
@@ -31,17 +32,18 @@ func NewEngine(cfg *config.RiskConfig) *Engine {
 		positions:     make(map[string]*types.Position),
 		lastResetTime: time.Now(),
 		strategyWeights: map[string]float64{
-			"LiquidityHuntEngine":          0.10,
-			"BetaArbitrageEngine":          0.08,
-			"MMPEngine-Pro":                0.10,
-			"DeltaNeutralFunding-Pro":      0.25,
-			"NeedleStrategy":               0.12,
-			"TrendFollowingStrategy":       0.15,
-			"MeanReversionStrategy":        0.12,
-			"VolatilityBreakoutStrategy":   0.08,
+			"LiquidityHuntEngine":        0.10,
+			"BetaArbitrageEngine":        0.08,
+			"MMPEngine-Pro":              0.10,
+			"DeltaNeutralFunding-Pro":    0.25,
+			"NeedleStrategy":             0.12,
+			"TrendFollowingStrategy":     0.15,
+			"MeanReversionStrategy":      0.12,
+			"VolatilityBreakoutStrategy": 0.08,
 		},
 		metrics:  make(map[string]interface{}),
 		stopChan: make(chan struct{}),
+		nowFunc:  time.Now,
 	}
 }
 
@@ -169,10 +171,10 @@ func (e *Engine) GetPositionSize(signal *types.Signal, accountBalance float64) f
 }
 
 func (e *Engine) checkDailyResetLocked() {
-	if time.Since(e.lastResetTime) > 24*time.Hour {
+	if e.nowFunc().Sub(e.lastResetTime) > 24*time.Hour {
 		e.dailyLoss = 0
 		e.dailyTrades = 0
-		e.lastResetTime = time.Now()
+		e.lastResetTime = e.nowFunc()
 		logger.Info("每日风控数据重置",
 			zap.Time("reset_time", e.lastResetTime),
 		)
@@ -206,8 +208,12 @@ func (e *Engine) checkLiquidityLocked(signal *types.Signal) error {
 }
 
 func (e *Engine) checkTimeFuseLocked() error {
-	now := time.Now().Format("15:04")
-	
+	return e.checkTimeFuseAt(e.nowFunc())
+}
+
+func (e *Engine) checkTimeFuseAt(now time.Time) error {
+	current := now.Format("15:04")
+
 	timeFuseWindows := []struct {
 		start string
 		end   string
@@ -218,11 +224,11 @@ func (e *Engine) checkTimeFuseLocked() error {
 		{"15:55", "16:05", "结算时段"},
 		{"23:55", "00:05", "结算时段"},
 	}
-	
+
 	for _, window := range timeFuseWindows {
-		if isTimeInWindow(now, window.start, window.end) {
+		if isTimeInWindow(current, window.start, window.end) {
 			logger.Warn("触发时间熔断，禁止新开仓",
-				zap.String("current_time", now),
+				zap.String("current_time", current),
 				zap.String("window_name", window.name),
 				zap.String("window_start", window.start),
 				zap.String("window_end", window.end),
@@ -230,7 +236,7 @@ func (e *Engine) checkTimeFuseLocked() error {
 			return ErrMarketClosed
 		}
 	}
-	
+
 	return nil
 }
 

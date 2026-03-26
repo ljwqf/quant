@@ -1,14 +1,15 @@
 package tests
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/internal/exchange/okx"
+	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
+	"go.uber.org/zap"
 )
 
 // TestOKXClient 测试 OKX 客户端（集成测试，需要配置文件和API密钥）
@@ -30,6 +31,11 @@ func TestOKXClient(t *testing.T) {
 		t.Skip("跳过集成测试: 请在配置文件或环境变量中设置OKX API密钥")
 	}
 
+	// 初始化日志
+	if err := logger.Init("info", "logs/test-okx.log"); err != nil {
+		t.Fatalf("初始化日志失败: %v", err)
+	}
+
 	// 创建 OKX 客户端
 	client := okx.NewClient(&cfg.Exchange.OKX)
 
@@ -43,7 +49,7 @@ func TestOKXClient(t *testing.T) {
 		if !client.IsConnected() {
 			t.Fatal("连接状态检查失败")
 		}
-		fmt.Println("✅ 连接成功")
+		logger.Info("✅ 连接成功")
 	})
 
 	// 测试获取账户信息
@@ -58,10 +64,15 @@ func TestOKXClient(t *testing.T) {
 			t.Fatalf("获取账户信息失败: %v", err)
 		}
 
-		fmt.Printf("✅ 账户信息: 总资产 %.2f USDT\n", account.TotalEquity)
+		logger.Info("✅ 账户信息",
+			zap.Float64("total_equity", account.TotalEquity),
+		)
 		for currency, balance := range account.Balance {
 			if balance.Total > 0 {
-				fmt.Printf("  - %s: %.2f\n", currency, balance.Total)
+				logger.Info("账户余额",
+					zap.String("currency", currency),
+					zap.Float64("total", balance.Total),
+				)
 			}
 		}
 	})
@@ -78,9 +89,14 @@ func TestOKXClient(t *testing.T) {
 			t.Fatalf("获取行情失败: %v", err)
 		}
 
-		fmt.Printf("✅ 行情数据: %s 价格: %.2f USDT\n", ticker.Symbol, ticker.Price)
-		fmt.Printf("  24h 开盘: %.2f, 最高: %.2f, 最低: %.2f\n", ticker.Open24h, ticker.High24h, ticker.Low24h)
-		fmt.Printf("  24h 成交量: %.2f\n", ticker.Volume24h)
+		logger.Info("✅ 行情数据",
+			zap.String("symbol", ticker.Symbol),
+			zap.Float64("price", ticker.Price),
+			zap.Float64("open_24h", ticker.Open24h),
+			zap.Float64("high_24h", ticker.High24h),
+			zap.Float64("low_24h", ticker.Low24h),
+			zap.Float64("volume_24h", ticker.Volume24h),
+		)
 	})
 
 	// 测试获取K线
@@ -95,11 +111,17 @@ func TestOKXClient(t *testing.T) {
 			t.Fatalf("获取K线失败: %v", err)
 		}
 
-		fmt.Printf("✅ K线数据: %d 条\n", len(bars))
+		logger.Info("✅ K线数据", zap.Int("count", len(bars)))
 		for i, bar := range bars {
 			if i < 3 { // 只显示前3条
-				fmt.Printf("  %s: O=%.2f, H=%.2f, L=%.2f, C=%.2f, V=%.2f\n",
-					bar.Timestamp.Format("15:04"), bar.Open, bar.High, bar.Low, bar.Close, bar.Volume)
+				logger.Info("K线",
+					zap.String("time", bar.Timestamp.Format("15:04")),
+					zap.Float64("open", bar.Open),
+					zap.Float64("high", bar.High),
+					zap.Float64("low", bar.Low),
+					zap.Float64("close", bar.Close),
+					zap.Float64("volume", bar.Volume),
+				)
 			}
 		}
 	})
@@ -116,17 +138,23 @@ func TestOKXClient(t *testing.T) {
 			t.Fatalf("获取订单簿失败: %v", err)
 		}
 
-		fmt.Printf("✅ 订单簿数据: %s\n", orderBook.Symbol)
-		fmt.Println("  卖单:")
+		logger.Info("✅ 订单簿数据", zap.String("symbol", orderBook.Symbol))
+		logger.Info("卖单")
 		for i, ask := range orderBook.Asks {
 			if i < 3 {
-				fmt.Printf("    %.2f: %.2f\n", ask.Price, ask.Size)
+				logger.Info("卖单",
+					zap.Float64("price", ask.Price),
+					zap.Float64("size", ask.Size),
+				)
 			}
 		}
-		fmt.Println("  买单:")
+		logger.Info("买单")
 		for i, bid := range orderBook.Bids {
 			if i < 3 {
-				fmt.Printf("    %.2f: %.2f\n", bid.Price, bid.Size)
+				logger.Info("买单",
+					zap.Float64("price", bid.Price),
+					zap.Float64("size", bid.Size),
+				)
 			}
 		}
 	})
@@ -139,16 +167,24 @@ func TestOKXClient(t *testing.T) {
 		defer client.Disconnect()
 
 		// 订阅行情
-		fmt.Println("✅ 开始订阅行情数据...")
+		logger.Info("✅ 开始订阅行情数据...")
 		if err := client.SubscribeTicker("BTC-USDT-SWAP", func(tick *types.Tick) {
-			fmt.Printf("  行情更新: %s 价格: %.2f USDT\n", tick.Symbol, tick.Price)
+			logger.Info("行情更新",
+				zap.String("symbol", tick.Symbol),
+				zap.Float64("price", tick.Price),
+			)
 		}); err != nil {
 			t.Fatalf("订阅行情失败: %v", err)
 		}
 
 		// 订阅K线
 		if err := client.SubscribeBar("BTC-USDT-SWAP", "1m", func(bar *types.Bar) {
-			fmt.Printf("  K线更新: %s %s O=%.2f, C=%.2f\n", bar.Symbol, bar.Interval, bar.Open, bar.Close)
+			logger.Info("K线更新",
+				zap.String("symbol", bar.Symbol),
+				zap.String("interval", bar.Interval),
+				zap.Float64("open", bar.Open),
+				zap.Float64("close", bar.Close),
+			)
 		}); err != nil {
 			t.Fatalf("订阅K线失败: %v", err)
 		}
@@ -158,7 +194,11 @@ func TestOKXClient(t *testing.T) {
 			if len(orderBook.Asks) > 0 && len(orderBook.Bids) > 0 {
 				bestAsk := orderBook.Asks[0].Price
 				bestBid := orderBook.Bids[0].Price
-				fmt.Printf("  订单簿更新: %s 买一: %.2f 卖一: %.2f\n", orderBook.Symbol, bestBid, bestAsk)
+				logger.Info("订单簿更新",
+					zap.String("symbol", orderBook.Symbol),
+					zap.Float64("best_bid", bestBid),
+					zap.Float64("best_ask", bestAsk),
+				)
 			}
 		}); err != nil {
 			t.Fatalf("订阅订单簿失败: %v", err)

@@ -41,9 +41,9 @@ type AnalysisResult struct {
 
 // Analyzer 分析引擎
 type Analyzer struct {
-	client       *Client
-	aiRepo       repository.AIAnalysisRepository
-	model        string
+	client *Client
+	aiRepo repository.AIAnalysisRepository
+	model  string
 }
 
 // NewAnalyzer 创建分析引擎
@@ -53,8 +53,10 @@ func NewAnalyzer(client *Client, db *storage.Database, cfg *config.LLMConfig) *A
 		return nil
 	}
 
+	provider := ""
 	model := ""
 	if cfg != nil {
+		provider = cfg.Provider
 		switch cfg.Provider {
 		case "openai":
 			model = cfg.Providers.OpenAI.Model
@@ -63,16 +65,54 @@ func NewAnalyzer(client *Client, db *storage.Database, cfg *config.LLMConfig) *A
 		case "qwen":
 			model = cfg.Providers.Qwen.Model
 		}
-		if model == "" {
-			model = "gpt-4"
-		}
+	}
+	if model == "" {
+		model = defaultModelForProvider(provider)
+	}
+
+	aiRepo := repository.AIAnalysisRepository(&noopAIAnalysisRepository{})
+	if db != nil {
+		aiRepo = repository.NewAIAnalysisRepository(db.DB())
 	}
 
 	return &Analyzer{
-		client:       client,
-		aiRepo:       repository.NewAIAnalysisRepository(db.DB()),
-		model:        model,
+		client: client,
+		aiRepo: aiRepo,
+		model:  model,
 	}
+}
+
+func defaultModelForProvider(provider string) string {
+	switch provider {
+	case "claude":
+		return "claude-3-5-sonnet"
+	case "qwen":
+		return "qwen-plus"
+	default:
+		return "gpt-4"
+	}
+}
+
+type noopAIAnalysisRepository struct{}
+
+func (r *noopAIAnalysisRepository) Create(_ *storage.AIAnalysis) error {
+	return nil
+}
+
+func (r *noopAIAnalysisRepository) GetByID(_ int64) (*storage.AIAnalysis, error) {
+	return nil, nil
+}
+
+func (r *noopAIAnalysisRepository) ListBySymbol(_ string, _ int, _ int) ([]*storage.AIAnalysis, error) {
+	return []*storage.AIAnalysis{}, nil
+}
+
+func (r *noopAIAnalysisRepository) ListByType(_ string, _ int, _ int) ([]*storage.AIAnalysis, error) {
+	return []*storage.AIAnalysis{}, nil
+}
+
+func (r *noopAIAnalysisRepository) GetLatestBySymbolAndType(_, _ string) (*storage.AIAnalysis, error) {
+	return nil, nil
 }
 
 // AnalyzeTrade 交易前分析

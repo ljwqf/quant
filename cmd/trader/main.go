@@ -106,19 +106,22 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "配置文件路径")
 	flag.Parse()
 
-	fmt.Printf("正在加载配置文件，路径: %s\n", configPath)
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Printf("加载配置失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("配置加载成功，应用名称: %s\n", cfg.Basic.AppName)
 
 	logPath := fmt.Sprintf("logs/%s.log", cfg.Basic.AppName)
 	if err := logger.Init(cfg.Basic.LogLevel, logPath); err != nil {
-		fmt.Printf("初始化日志失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "初始化日志失败: %v\n", err)
 		os.Exit(1)
 	}
+
+	logger.Info("配置文件加载完成",
+		zap.String("config_path", configPath),
+		zap.String("app_name", cfg.Basic.AppName),
+	)
 
 	defer logger.GetLogger().Sync()
 
@@ -182,11 +185,9 @@ func main() {
 		llmClient = llmanalysis.NewClient(&cfg.LLM)
 		if llmClient != nil {
 			logger.Info("大模型客户端初始化成功")
-			if db != nil {
-				llmAnalyzer = llmanalysis.NewAnalyzer(llmClient, db, &cfg.LLM)
-				if llmAnalyzer != nil {
-					logger.Info("大模型分析引擎初始化成功")
-				}
+			llmAnalyzer = llmanalysis.NewAnalyzer(llmClient, db, &cfg.LLM)
+			if llmAnalyzer != nil {
+				logger.Info("大模型分析引擎初始化成功")
 			}
 		}
 	}
@@ -310,14 +311,14 @@ func main() {
 	// 新增：趋势跟踪策略
 	trendFollowingStrategy := strategy.NewTrendFollowingStrategy()
 	trendFollowingParams := map[string]interface{}{
-		"ema_short_period":     cfg.Strategy.TrendFollowing.EMAShortPeriod,
-		"ema_long_period":      cfg.Strategy.TrendFollowing.EMALongPeriod,
-		"adx_period":           cfg.Strategy.TrendFollowing.ADXPeriod,
-		"adx_threshold":        cfg.Strategy.TrendFollowing.ADXThreshold,
-		"trend_strength":       cfg.Strategy.TrendFollowing.TrendStrength,
-		"stop_loss_percent":    cfg.Strategy.TrendFollowing.StopLossPercent,
+		"ema_short_period":      cfg.Strategy.TrendFollowing.EMAShortPeriod,
+		"ema_long_period":       cfg.Strategy.TrendFollowing.EMALongPeriod,
+		"adx_period":            cfg.Strategy.TrendFollowing.ADXPeriod,
+		"adx_threshold":         cfg.Strategy.TrendFollowing.ADXThreshold,
+		"trend_strength":        cfg.Strategy.TrendFollowing.TrendStrength,
+		"stop_loss_percent":     cfg.Strategy.TrendFollowing.StopLossPercent,
 		"trailing_stop_percent": cfg.Strategy.TrendFollowing.TrailingStopPercent,
-		"signal_cooldown":      cfg.Strategy.TrendFollowing.SignalCooldown,
+		"signal_cooldown":       cfg.Strategy.TrendFollowing.SignalCooldown,
 	}
 	if err := strategyEngine.AddStrategy("TrendFollowingStrategy", trendFollowingStrategy, trendFollowingParams); err != nil {
 		logger.Error("添加TrendFollowingStrategy策略失败", zap.Error(err))
@@ -327,15 +328,15 @@ func main() {
 	// 新增：均值回归策略
 	meanReversionStrategy := strategy.NewMeanReversionStrategy()
 	meanReversionParams := map[string]interface{}{
-		"rsi_period":           cfg.Strategy.MeanReversion.RSIPeriod,
-		"rsi_overbought":       cfg.Strategy.MeanReversion.RSIOverbought,
-		"rsi_oversold":         cfg.Strategy.MeanReversion.RSIOversold,
-		"bb_period":            cfg.Strategy.MeanReversion.BBPeriod,
-		"bb_std_dev":           cfg.Strategy.MeanReversion.BBStdDev,
-		"threshold":            cfg.Strategy.MeanReversion.Threshold,
-		"stop_loss_percent":    cfg.Strategy.MeanReversion.StopLossPercent,
+		"rsi_period":            cfg.Strategy.MeanReversion.RSIPeriod,
+		"rsi_overbought":        cfg.Strategy.MeanReversion.RSIOverbought,
+		"rsi_oversold":          cfg.Strategy.MeanReversion.RSIOversold,
+		"bb_period":             cfg.Strategy.MeanReversion.BBPeriod,
+		"bb_std_dev":            cfg.Strategy.MeanReversion.BBStdDev,
+		"threshold":             cfg.Strategy.MeanReversion.Threshold,
+		"stop_loss_percent":     cfg.Strategy.MeanReversion.StopLossPercent,
 		"trailing_stop_percent": cfg.Strategy.MeanReversion.TrailingStopPercent,
-		"signal_cooldown":      cfg.Strategy.MeanReversion.SignalCooldown,
+		"signal_cooldown":       cfg.Strategy.MeanReversion.SignalCooldown,
 	}
 	if err := strategyEngine.AddStrategy("MeanReversionStrategy", meanReversionStrategy, meanReversionParams); err != nil {
 		logger.Error("添加MeanReversionStrategy策略失败", zap.Error(err))
@@ -345,14 +346,14 @@ func main() {
 	// 新增：波动率突破策略
 	volatilityBreakoutStrategy := strategy.NewVolatilityBreakoutStrategy()
 	volatilityBreakoutParams := map[string]interface{}{
-		"atr_period":           cfg.Strategy.VolatilityBreakout.ATRPeriod,
-		"volume_ma_period":     cfg.Strategy.VolatilityBreakout.VolumeMAPeriod,
-		"breakout_multiplier":  cfg.Strategy.VolatilityBreakout.BreakoutMultiplier,
-		"min_volume_ratio":     cfg.Strategy.VolatilityBreakout.MinVolumeRatio,
-		"max_holding_bars":     cfg.Strategy.VolatilityBreakout.MaxHoldingBars,
-		"stop_loss_percent":    cfg.Strategy.VolatilityBreakout.StopLossPercent,
+		"atr_period":            cfg.Strategy.VolatilityBreakout.ATRPeriod,
+		"volume_ma_period":      cfg.Strategy.VolatilityBreakout.VolumeMAPeriod,
+		"breakout_multiplier":   cfg.Strategy.VolatilityBreakout.BreakoutMultiplier,
+		"min_volume_ratio":      cfg.Strategy.VolatilityBreakout.MinVolumeRatio,
+		"max_holding_bars":      cfg.Strategy.VolatilityBreakout.MaxHoldingBars,
+		"stop_loss_percent":     cfg.Strategy.VolatilityBreakout.StopLossPercent,
 		"trailing_stop_percent": cfg.Strategy.VolatilityBreakout.TrailingStopPercent,
-		"signal_cooldown":      cfg.Strategy.VolatilityBreakout.SignalCooldown,
+		"signal_cooldown":       cfg.Strategy.VolatilityBreakout.SignalCooldown,
 	}
 	if err := strategyEngine.AddStrategy("VolatilityBreakoutStrategy", volatilityBreakoutStrategy, volatilityBreakoutParams); err != nil {
 		logger.Error("添加VolatilityBreakoutStrategy策略失败", zap.Error(err))

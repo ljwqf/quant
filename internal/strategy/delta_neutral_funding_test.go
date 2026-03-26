@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ljwqf/quant/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ljwqf/quant/pkg/types"
 )
 
 func TestDeltaNeutralFundingOnPositionReducedUpdatesSpotLeg(t *testing.T) {
@@ -301,9 +301,9 @@ func TestDeltaNeutralFundingInitializePosition(t *testing.T) {
 func TestDeltaNeutralFundingCheckRebalance(t *testing.T) {
 	strategy := NewDeltaNeutralFundingPro()
 	require.NoError(t, strategy.Init(map[string]interface{}{
-		"spot_symbol":       "BTC-USDT",
-		"perp_symbol":       "BTC-USDT-SWAP",
-		"rebalance_threshold": 0.01,
+		"spot_symbol":           "BTC-USDT",
+		"perp_symbol":           "BTC-USDT-SWAP",
+		"rebalance_threshold":   0.01,
 		"basis_circuit_breaker": 0.05, // Increase to avoid circuit breaker
 	}))
 
@@ -513,4 +513,42 @@ func TestDeltaNeutralFundingOnOrderBook(t *testing.T) {
 	signal, err := strategy.OnOrderBook(&types.OrderBook{Symbol: "BTC-USDT"})
 	assert.NoError(t, err)
 	assert.Nil(t, signal)
+}
+
+func TestDeltaNeutralFundingRecordPnLResetsDailyLossOnNewDay(t *testing.T) {
+	strategy := NewDeltaNeutralFundingPro()
+	require.NoError(t, strategy.Init(map[string]interface{}{}))
+
+	oldDay := time.Date(2025, 12, 31, 23, 59, 0, 0, time.UTC)
+	newDay := oldDay.Add(2 * time.Minute)
+
+	strategy.dailyLoss = 5.0
+	strategy.dailyLossReset = oldDay
+	strategy.nowFunc = func() time.Time { return newDay }
+
+	strategy.RecordPnL(-2.0)
+
+	assert.Equal(t, 2.0, strategy.dailyLoss)
+	assert.Equal(t, newDay, strategy.dailyLossReset)
+}
+
+func TestDeltaNeutralFundingCircuitBreakerResetsStaleDailyLoss(t *testing.T) {
+	strategy := NewDeltaNeutralFundingPro()
+	require.NoError(t, strategy.Init(map[string]interface{}{
+		"daily_loss_limit":      0.02,
+		"basis_circuit_breaker": 0.05,
+	}))
+
+	oldDay := time.Date(2026, 1, 31, 23, 59, 0, 0, time.UTC)
+	newDay := time.Date(2026, 2, 1, 0, 1, 0, 0, time.UTC)
+
+	strategy.dailyLoss = strategy.dailyLossLimit
+	strategy.dailyLossReset = oldDay
+	strategy.nowFunc = func() time.Time { return newDay }
+	strategy.UpdateSpotPrice(100)
+	strategy.UpdatePerpPrice(100)
+
+	assert.False(t, strategy.checkCircuitBreaker())
+	assert.Equal(t, 0.0, strategy.dailyLoss)
+	assert.Equal(t, newDay, strategy.dailyLossReset)
 }
