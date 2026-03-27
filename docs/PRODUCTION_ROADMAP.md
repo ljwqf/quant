@@ -12,9 +12,9 @@
 
 | 模块 | 当前覆盖率 | 生产目标 | 状态 |
 |------|-----------|----------|------|
-| `internal/risk` | 75.7% | ≥80% | ✅ 接近达标 |
+| `internal/risk` | 83.9% | ≥80% | ✅ 达标 |
 | `internal/execution` | 74.4% | ≥70% | ✅ 达标 |
-| `internal/strategy` | 69.7% | ≥60% | ✅ 达标 |
+| `internal/strategy` | 67.8% | ≥60% | ✅ 达标 |
 | `pkg/errors` | 96.9% | ≥80% | ✅ 达标 |
 | `pkg/persistence` | 61.8% | ≥60% | ✅ 达标 |
 | `internal/exchange/okx` | 7.0% | ≥70% | ❌ 严重不足 |
