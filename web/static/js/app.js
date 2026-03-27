@@ -91,7 +91,83 @@ function handleMessage(message) {
         case 'rebalance_event':
             handleRebalanceEvent(message.data);
             break;
+        // 新增消息类型
+        case 'alert':
+            handleAlert(message.data);
+            break;
+        case 'position_change':
+            handlePositionChange(message.data);
+            break;
+        case 'order_update':
+            handleOrderUpdate(message.data);
+            break;
+        case 'subscription':
+            console.log('订阅确认:', message.data);
+            break;
     }
+}
+
+// 处理提醒消息
+function handleAlert(data) {
+    if (!data) return;
+
+    const levelMap = {
+        'info': 'info',
+        'warning': 'warning',
+        'error': 'error',
+        'critical': 'error'
+    };
+
+    const typeMap = {
+        'price_change': '价格提醒',
+        'news': '新闻提醒',
+        'economic_event': '经济事件',
+        'risk_warning': '风险警告',
+        'system': '系统通知'
+    };
+
+    const alertType = typeMap[data.type] || data.type;
+    const level = levelMap[data.level] || 'info';
+    const message = `[${alertType}] ${data.title}: ${data.message}`;
+
+    showRuntimeNotice(message, level);
+    console.log('收到提醒:', data);
+}
+
+// 处理持仓变化消息
+function handlePositionChange(data) {
+    if (!data) return;
+
+    fetch('/api/positions').then(r => r.json()).then(updatePositions);
+
+    const changeTypeMap = {
+        'open': '开仓',
+        'close': '平仓',
+        'update': '更新'
+    };
+
+    const changeType = changeTypeMap[data.change_type] || data.change_type;
+    const message = `${data.symbol} ${changeType}: ${data.size}`;
+    showRuntimeNotice(message, data.change_type === 'close' && data.pnl < 0 ? 'error' : 'info');
+}
+
+// 处理订单更新消息
+function handleOrderUpdate(data) {
+    if (!data) return;
+
+    fetch('/api/orders').then(r => r.json()).then(updateOrders);
+
+    const statusMap = {
+        'pending': '待成交',
+        'filled': '已成交',
+        'partially': '部分成交',
+        'cancelled': '已取消',
+        'failed': '失败'
+    };
+
+    const status = statusMap[data.status] || data.status;
+    const message = `${data.symbol} 订单 ${data.order_id} ${status}`;
+    showRuntimeNotice(message, data.status === 'filled' ? 'success' : (data.status === 'failed' ? 'error' : 'info'));
 }
 
 // 获取初始数据

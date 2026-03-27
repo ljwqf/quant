@@ -293,6 +293,11 @@ func (s *Server) SetAlertService(alertService *alertservice.AlertService) {
 	s.alertService = alertService
 }
 
+// GetWebSocketHub 获取WebSocket Hub，用于注册WebSocket通道
+func (s *Server) GetWebSocketHub() *WebSocketHub {
+	return s.wsHub
+}
+
 // 大模型分析相关请求结构
 type analyzeTradeRequest struct {
 	Symbol string  `json:"symbol"`

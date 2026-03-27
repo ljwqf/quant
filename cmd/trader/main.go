@@ -828,6 +828,10 @@ func main() {
 	}
 	if alertService != nil {
 		apiServer.SetAlertService(alertService)
+		// 注册WebSocket通道，将提醒推送到前端
+		wsAdapter := api.NewAlertServiceChannelAdapter(apiServer.GetWebSocketHub())
+		alertService.RegisterChannel(wsAdapter)
+		logger.Info("WebSocket提醒通道已注册")
 	}
 	go func() {
 		if err := apiServer.Start(); err != nil {

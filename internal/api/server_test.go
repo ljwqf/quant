@@ -520,3 +520,858 @@ func websocketURL(t *testing.T, rawURL string) string {
 	}
 	return parsed.String()
 }
+
+// Additional tests for better coverage
+
+func TestSetManualTradeManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test that nil doesn't panic
+	s.SetManualTradeManager(nil)
+	assert.Nil(t, s.manualTradeMgr)
+}
+
+func TestSetAnalyzer(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	s.SetAnalyzer(nil) // Should not panic
+	assert.Nil(t, s.analyzer)
+}
+
+func TestSetDataService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	s.SetDataService(nil) // Should not panic
+	assert.Nil(t, s.dataService)
+}
+
+func TestSetAlertService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	s.SetAlertService(nil) // Should not panic
+	assert.Nil(t, s.alertService)
+}
+
+func TestUpdateSystemStatus(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	status := &SystemStatus{
+		Running:           true,
+		ExchangeConnected: true,
+		AccountBalance:    10000.0,
+	}
+	s.UpdateSystemStatus(status)
+	assert.True(t, s.systemStatus.Running)
+
+	// Broadcast to websocket
+	msg := readWSMessage(t, s)
+	assert.Equal(t, "status", msg.Type)
+}
+
+func TestUpdateStrategyStatus(t *testing.T) {
+	s := NewServer("127.0.1", 8765, testConfig(), "", nil)
+
+	status := &StrategyStatus{
+		Name:    "NeedleStrategy",
+		Enabled: true,
+		Running: true,
+		PnL:     100.0,
+	}
+	s.UpdateStrategyStatus("NeedleStrategy", status)
+
+	stored, ok := s.strategies["NeedleStrategy"]
+	assert.True(t, ok)
+	assert.True(t, stored.Running)
+
+	// Broadcast to websocket
+	msg := readWSMessage(t, s)
+	assert.Equal(t, "strategy", msg.Type)
+}
+
+func TestUpdatePositions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	positions := []*PositionInfo{
+		{Symbol: "BTC-USDT", Side: "long", Size: 0.1, EntryPrice: 50000},
+		{Symbol: "ETH-USDT", Side: "short", Size: 1.0, EntryPrice: 3000},
+	}
+
+	s.UpdatePositions(positions)
+	assert.Len(t, s.positions, 2)
+
+	// Broadcast to websocket
+	msg := readWSMessage(t, s)
+	assert.Equal(t, "positions", msg.Type)
+}
+
+func TestAddSignal(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	signal := &SignalInfo{
+		Strategy:   "NeedleStrategy",
+		Symbol:     "BTC-USDT",
+		Side:       "buy",
+		Confidence: 0.8,
+	}
+
+	s.AddSignal(signal)
+	assert.Len(t, s.signals, 1)
+	assert.Equal(t, "NeedleStrategy", s.signals[0].Strategy)
+
+	// Broadcast to websocket
+	msg := readWSMessage(t, s)
+	assert.Equal(t, "signal", msg.Type)
+}
+
+func TestHandleStatus(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.UpdateSystemStatus(&SystemStatus{Running: true, ExchangeConnected: true})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/status", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var status SystemStatus
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &status))
+	assert.True(t, status.Running)
+}
+
+func TestHandleStrategies(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.UpdateStrategyStatus("NeedleStrategy", &StrategyStatus{Running: true, Enabled: true})
+	s.UpdateStrategyStatus("MMPEngine", &StrategyStatus{Running: false, Enabled: false})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/strategies", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var strategies []*StrategyStatus
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &strategies))
+	assert.Len(t, strategies, 2)
+}
+
+func TestHandlePositions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.UpdatePositions([]*PositionInfo{
+		{Symbol: "BTC-USDT", Side: "long", Size: 0.1, EntryPrice: 50000},
+	})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/positions", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var positions []*PositionInfo
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &positions))
+	assert.Len(t, positions, 1)
+}
+
+func TestHandleOrders(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.AddOrder(&OrderInfo{OrderID: "ord-1", Symbol: "BTC-USDT", Status: "pending"})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/orders", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var orders []*OrderInfo
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &orders))
+	assert.Len(t, orders, 1)
+}
+
+func TestHandleSignals(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.AddSignal(&SignalInfo{Strategy: "test", Symbol: "BTC-USDT", Side: "buy"})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/signals", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var signals []*SignalInfo
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &signals))
+	assert.Len(t, signals, 1)
+}
+
+func TestHandleAccount(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/account", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestStrategyStartSuccess(t *testing.T) {
+	t.Setenv("OKX_QUANT_API_TOKEN", "token-123")
+
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		StartStrategy: func(name string) (*StrategyStatus, error) {
+			return &StrategyStatus{Name: name, Running: true, Enabled: true}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/start/TestStrategy", nil, "203.0.113.10:4321", map[string]string{"X-API-Token": "token-123"})
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestStrategyStopSuccess(t *testing.T) {
+	t.Setenv("OKX_QUANT_API_TOKEN", "token-123")
+
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		StopStrategy: func(name string) (*StrategyStatus, error) {
+			return &StrategyStatus{Name: name, Running: false, Enabled: true}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/stop/TestStrategy", nil, "203.0.113.10:4321", map[string]string{"X-API-Token": "token-123"})
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestStrategyStopFails(t *testing.T) {
+	t.Setenv("OKX_QUANT_API_TOKEN", "token-123")
+
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		StopStrategy: func(name string) (*StrategyStatus, error) {
+			return nil, assert.AnError
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/stop/TestStrategy", nil, "203.0.113.10:4321", map[string]string{"X-API-Token": "token-123"})
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+}
+
+func TestParseTrustedProxies(t *testing.T) {
+	tests := []struct {
+		input    []string
+		expected int // number of networks expected
+	}{
+		{[]string{}, 0},
+		{[]string{"127.0.0.1"}, 1},
+		{[]string{"127.0.0.1", "10.0.0.0/8"}, 2},
+		{[]string{"  127.0.0.1  ", "  10.0.0.1  "}, 2},
+	}
+
+	for _, tt := range tests {
+		result := parseTrustedProxies(tt.input)
+		assert.Len(t, result, tt.expected)
+	}
+}
+
+func TestStartStop(t *testing.T) {
+	s := NewServer("127.0.0.1", 0, testConfig(), "", nil)
+
+	// Start the server in a goroutine
+	go func() {
+		s.Start()
+	}()
+
+	// Wait a bit for the server to start
+	time.Sleep(100 * time.Millisecond)
+	assert.True(t, s.systemStatus.Running)
+
+	// Stop the server
+	err := s.Stop()
+	require.NoError(t, err)
+	assert.False(t, s.systemStatus.Running)
+}
+
+func TestIsTrustedRequest(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	tests := []struct {
+		remoteAddr string
+		expected   bool
+	}{
+		{"127.0.0.1:12345", true},
+		{"localhost:12345", true},
+		{"[::1]:12345", true},
+		{"192.168.1.1:12345", false},
+		{"10.0.0.1:12345", false},
+	}
+
+	for _, tt := range tests {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = tt.remoteAddr
+		result := s.isTrustedRequest(req)
+		assert.Equal(t, tt.expected, result, "remoteAddr=%s", tt.remoteAddr)
+	}
+}
+
+func TestHasValidToken(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.apiToken = "test-token"
+
+	assert.True(t, s.hasValidToken("test-token"))
+	assert.False(t, s.hasValidToken("wrong-token"))
+	assert.False(t, s.hasValidToken(""))
+}
+
+func TestMaskSecret(t *testing.T) {
+	assert.Equal(t, maskedSecretValue, maskSecret("secret-value"))
+	assert.Equal(t, maskedSecretValue, maskSecret("  secret-value  "))
+	assert.Equal(t, "", maskSecret(""))
+	assert.Equal(t, "", maskSecret("   "))
+}
+
+func TestShouldPreserveSecret(t *testing.T) {
+	assert.True(t, shouldPreserveSecret(""))
+	assert.True(t, shouldPreserveSecret("   "))
+	assert.True(t, shouldPreserveSecret(maskedSecretValue))
+	assert.False(t, shouldPreserveSecret("real-secret"))
+}
+
+func TestBuildOrderFromRequest(t *testing.T) {
+	tests := []struct {
+		name        string
+		req         *createOrderRequest
+		expectError bool
+	}{
+		{"valid limit order", &createOrderRequest{Symbol: "BTC-USDT", Side: "buy", Type: "limit", Price: 50000, Size: 0.1}, false},
+		{"valid market order", &createOrderRequest{Symbol: "BTC-USDT", Side: "sell", Type: "market", Size: 0.1}, false},
+		{"missing symbol", &createOrderRequest{Side: "buy", Type: "limit", Price: 50000, Size: 0.1}, true},
+		{"missing size", &createOrderRequest{Symbol: "BTC-USDT", Side: "buy", Type: "limit", Price: 50000}, true},
+		{"invalid side", &createOrderRequest{Symbol: "BTC-USDT", Side: "invalid", Type: "limit", Price: 50000, Size: 0.1}, true},
+		{"invalid type", &createOrderRequest{Symbol: "BTC-USDT", Side: "buy", Type: "invalid", Price: 50000, Size: 0.1}, true},
+		{"limit without price", &createOrderRequest{Symbol: "BTC-USDT", Side: "buy", Type: "limit", Size: 0.1}, true},
+		{"nil request", nil, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			order, err := buildOrderFromRequest(tt.req)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, order)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, order)
+				assert.Equal(t, tt.req.Symbol, order.Symbol)
+			}
+		})
+	}
+}
+
+func TestHandleManualCreateOrderWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT","side":"buy","type":"market","size":0.1}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/order", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "Manual trading not enabled")
+}
+
+func TestHandleManualListOrdersWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/orders", nil, "127.0.0.1:12345", nil)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleGetTickerWithActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		GetTicker: func(symbol string) (*types.Tick, error) {
+			return &types.Tick{Symbol: symbol, Price: 50000.0}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/market/ticker?symbol=BTC-USDT", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "BTC-USDT")
+}
+
+func TestHandleGetBarsWithActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		GetBars: func(symbol string, interval string, limit int) ([]*types.Bar, error) {
+			return []*types.Bar{{Symbol: symbol}}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/market/bars?symbol=BTC-USDT&interval=1m", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestHandleGetOrderBookWithActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		GetOrderBook: func(symbol string, depth int) (*types.OrderBook, error) {
+			return &types.OrderBook{Symbol: symbol}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/market/orderbook?symbol=BTC-USDT&depth=5", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestHandleLLMWithoutAnalyzer(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test LLM analyze positions - GET request
+	recorder := performRequest(t, s, http.MethodGet, "/api/llm/analyze/positions", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	// Test LLM history - GET request
+	recorder = performRequest(t, s, http.MethodGet, "/api/llm/history", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleLLMAnalyzeTradeWithoutAnalyzer(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test LLM analyze trade - POST request
+	payload := []byte(`{"symbol":"BTC-USDT","side":"buy","size":0.1}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/llm/analyze/trade", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleLLMAnalyzeMarketWithoutAnalyzer(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT"}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/llm/analyze/market", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleLLMAnalyzeOrdersWithoutAnalyzer(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"orders":[{"symbol":"BTC-USDT","side":"buy","size":0.1}]}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/llm/analyze/orders", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleDataWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test get news
+	recorder := performRequest(t, s, http.MethodGet, "/api/data/news", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	// Test get events
+	recorder = performRequest(t, s, http.MethodGet, "/api/data/events", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	// Test collect now
+	recorder = performRequest(t, s, http.MethodPost, "/api/data/collect", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleAlertsWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test get alerts
+	recorder := performRequest(t, s, http.MethodGet, "/api/alerts", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	// Test send alert
+	payload := []byte(`{"title":"Test","message":"Test message"}`)
+	recorder = performRequest(t, s, http.MethodPost, "/api/alerts/send", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestCloneRebalanceEventInfo(t *testing.T) {
+	original := &RebalanceEventInfo{
+		Type:      "open",
+		Strategy:  "DeltaNeutralFunding-Pro",
+		Step:      "spot_leg",
+		Reason:    "rollback_failed",
+		Message:   "Test message",
+		Timestamp: time.Now(),
+		Labels:    map[string]string{"event": "test"},
+		Details:   map[string]interface{}{"plan_id": "plan-1"},
+		Circuit:   &RebalanceCircuitInfo{Open: true, Strategy: "DeltaNeutralFunding-Pro"},
+	}
+
+	cloned := cloneRebalanceEventInfo(original)
+	assert.Equal(t, original.Type, cloned.Type)
+	assert.Equal(t, original.Strategy, cloned.Strategy)
+	assert.Equal(t, original.Labels["event"], cloned.Labels["event"])
+	assert.Equal(t, original.Circuit.Open, cloned.Circuit.Open)
+
+	// Verify it's a deep copy
+	cloned.Labels["event"] = "modified"
+	assert.NotEqual(t, original.Labels["event"], cloned.Labels["event"])
+}
+
+func TestGetRecentRebalanceEventsEmpty(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	events := s.GetRecentRebalanceEvents(10)
+	assert.Empty(t, events)
+}
+
+func TestHandleManualCancelOrderWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodDelete, "/api/manual/order/ord-123", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleManualClosePositionWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT"}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/position/close", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleManualSetTpSlWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT","take_profit":55000,"stop_loss":45000}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/position/tp-sl", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleManualSetLeverageWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT","leverage":10}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/position/leverage", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleManualSetTrailingStopWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT","stop_distance":500}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/position/trailing-stop", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleCreateTimedOrderWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT","side":"buy","size":0.1,"execute_at":"2024-01-01T12:00:00Z"}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/timed-order", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleCancelTimedOrderWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodDelete, "/api/manual/timed-order/ord-123", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleListTimedOrdersWithoutManager(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/timed-orders", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleCollectNowWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/data/collect", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleSendAlertWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"title":"Test","message":"Test message"}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/alerts/send", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleManualCreateOrderValidation(t *testing.T) {
+	// Test with nil manager
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test missing symbol
+	payload := []byte(`{"side":"buy","type":"market","size":0.1}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/order", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleCreateTimedOrderValidation(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Test missing symbol - still returns service unavailable first
+	payload := []byte(`{"side":"buy","size":0.1,"execute_at":"2024-01-01T12:00:00Z"}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/timed-order", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleRebalanceCircuitWithoutActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/rebalance/circuit", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusNotImplemented, recorder.Code)
+}
+
+func TestHandleRebalanceCircuitResetWithoutActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"reason":"manual"}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/rebalance/circuit/reset", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusNotImplemented, recorder.Code)
+}
+
+func TestHandleCreateOrderWithoutActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	payload := []byte(`{"symbol":"BTC-USDT","side":"buy","type":"market","size":0.1}`)
+	recorder := performRequest(t, s, http.MethodPost, "/api/order/create", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusNotImplemented, recorder.Code)
+}
+
+func TestHandleClosePositionWithoutActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/position/close/BTC-USDT", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusNotImplemented, recorder.Code)
+}
+
+func TestHandleStrategyStartWithoutActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/start/TestStrategy", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusNotImplemented, recorder.Code)
+}
+
+func TestHandleStrategyStopWithoutActions(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/strategy/stop/TestStrategy", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusNotImplemented, recorder.Code)
+}
+
+func TestHandleRebalanceEventsWithLimit(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	// Add some events
+	for i := 0; i < 5; i++ {
+		s.BroadcastRebalanceEvent(&RebalanceEventInfo{
+			Type:      "test",
+			Strategy:  "TestStrategy",
+			Timestamp: time.Now(),
+		})
+	}
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/rebalance/events", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var events []*RebalanceEventInfo
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &events))
+	assert.Len(t, events, 5)
+}
+
+func TestUpdateRebalanceCircuit(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	info := &RebalanceCircuitInfo{
+		Open:     true,
+		Strategy: "TestStrategy",
+		Reason:   "test",
+	}
+	s.UpdateRebalanceCircuit(info)
+
+	msg := readWSMessage(t, s)
+	assert.Equal(t, "rebalance_circuit", msg.Type)
+}
+
+func TestBroadcastRebalanceCircuitReset(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	event := &RebalanceCircuitResetEvent{
+		Success:   true,
+		Message:   "test reset",
+		Timestamp: time.Now(),
+	}
+	s.BroadcastRebalanceCircuitReset(event)
+
+	msg := readWSMessage(t, s)
+	assert.Equal(t, "rebalance_circuit_reset", msg.Type)
+}
+
+func TestHandleGetNewsWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/data/news", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleGetEventsWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/data/events", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleGetAlertsWithoutService(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/alerts", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+}
+
+func TestHandleConfigMethodNotAllowed(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodDelete, "/api/config", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualCreateOrderWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/order", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualListOrdersWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/orders", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleGetTickerWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		GetTicker: func(symbol string) (*types.Tick, error) {
+			return &types.Tick{Symbol: symbol}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/market/ticker", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleGetBarsWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", &ActionHandlers{
+		GetBars: func(symbol string, interval string, limit int) ([]*types.Bar, error) {
+			return []*types.Bar{}, nil
+		},
+	})
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/market/bars", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleRebalanceCircuitWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/rebalance/circuit", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleRebalanceEventsWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/rebalance/events", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleLLMAnalyzeTradeWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/llm/analyze/trade", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleLLMAnalyzePositionsWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/llm/analyze/positions", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleLLMAnalyzeMarketWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/llm/analyze/market", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleLLMHistoryWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/llm/history", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleDataNewsWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/data/news", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleDataEventsWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/data/events", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleAlertsWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/alerts", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualCancelOrderWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/order/ord-123", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualClosePositionWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/position/close", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualSetTpSlWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/position/tp-sl", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualSetLeverageWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/position/leverage", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleManualSetTrailingStopWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/position/trailing-stop", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleCreateTimedOrderWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/manual/timed-order", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleCancelTimedOrderWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/timed-order/ord-123", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleListTimedOrdersWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/manual/timed-orders", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleCollectNowWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/data/collect", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleSendAlertWrongMethod(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/alerts/send", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
