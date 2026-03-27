@@ -64,3 +64,5 @@ coverage.html
 # Configuration files
 configs/*
 !configs/config.yaml.example
+!configs/config.sim.yaml
+!configs/config.prod.yaml

@@ -226,6 +226,8 @@ type StrategyConfig struct {
 	Enable              bool                          `mapstructure:"enable"`
 	Name                string                        `mapstructure:"name"`
 	Params              map[string]interface{}        `mapstructure:"params"`
+	DefaultSymbol       string                        `mapstructure:"default_symbol"`
+	DefaultBarInterval  string                        `mapstructure:"default_bar_interval"`
 	DeltaNeutral        DeltaNeutralStrategyConfig    `mapstructure:"delta_neutral"`
 	SmartFilter         SmartFilterConfig             `mapstructure:"smart_filter"`
 	TrendFollowing      TrendFollowingStrategyConfig  `mapstructure:"trend_following"`
@@ -364,6 +366,9 @@ func resolveEnvVars(config *Config) error {
 	config.LLM.Providers.OpenAI.APIKey = resolveEnvVar(config.LLM.Providers.OpenAI.APIKey)
 	config.LLM.Providers.Claude.APIKey = resolveEnvVar(config.LLM.Providers.Claude.APIKey)
 	config.LLM.Providers.Qwen.APIKey = resolveEnvVar(config.LLM.Providers.Qwen.APIKey)
+
+	// 解析SmartFilter CryptoQuant配置中的环境变量
+	config.Strategy.SmartFilter.CryptoQuant.APIKey = resolveEnvVar(config.Strategy.SmartFilter.CryptoQuant.APIKey)
 
 	return nil
 }

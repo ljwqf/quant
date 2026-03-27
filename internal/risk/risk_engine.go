@@ -10,6 +10,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// LiquidityChecker 流动性检查器接口
+type LiquidityChecker interface {
+	GetOrderBook(symbol string, depth int) (*types.OrderBook, error)
+}
+
 type Engine struct {
 	config          *config.RiskConfig
 	dailyLoss       float64
@@ -22,10 +27,26 @@ type Engine struct {
 	stopChan        chan struct{}
 	stopOnce        sync.Once
 	nowFunc         func() time.Time
+	// 流动性检查相关字段
+	liquidityChecker LiquidityChecker
+	maxSlippage      float64
+	orderBookDepth   int
 }
 
-func NewEngine(cfg *config.RiskConfig) *Engine {
-	return &Engine{
+// EngineOption 引擎配置选项
+type EngineOption func(*Engine)
+
+// WithLiquidityChecker 设置流动性检查器
+func WithLiquidityChecker(checker LiquidityChecker, maxSlippage float64, depth int) EngineOption {
+	return func(e *Engine) {
+		e.liquidityChecker = checker
+		e.maxSlippage = maxSlippage
+		e.orderBookDepth = depth
+	}
+}
+
+func NewEngine(cfg *config.RiskConfig, opts ...EngineOption) *Engine {
+	e := &Engine{
 		config:        cfg,
 		dailyLoss:     0,
 		dailyTrades:   0,
@@ -41,10 +62,18 @@ func NewEngine(cfg *config.RiskConfig) *Engine {
 			"MeanReversionStrategy":      0.12,
 			"VolatilityBreakoutStrategy": 0.08,
 		},
-		metrics:  make(map[string]interface{}),
-		stopChan: make(chan struct{}),
-		nowFunc:  time.Now,
+		metrics:       make(map[string]interface{}),
+		stopChan:      make(chan struct{}),
+		nowFunc:       time.Now,
+		maxSlippage:   0.0025, // 默认 0.25%
+		orderBookDepth: 20,    // 默认深度
 	}
+
+	for _, opt := range opts {
+		opt(e)
+	}
+
+	return e
 }
 
 func (e *Engine) CheckRisk(signal *types.Signal) error {
@@ -204,6 +233,107 @@ func (e *Engine) checkPositionLimitLocked(signal *types.Signal) error {
 }
 
 func (e *Engine) checkLiquidityLocked(signal *types.Signal) error {
+	// 退出信号不需要检查流动性
+	if signal == nil || signal.Type == types.SignalTypeExit {
+		return nil
+	}
+
+	// 未配置流动性检查器时跳过
+	if e.liquidityChecker == nil {
+		return nil
+	}
+
+	// 无数量时不检查
+	if signal.Quantity <= 0 {
+		return nil
+	}
+
+	// 获取订单簿
+	orderBook, err := e.liquidityChecker.GetOrderBook(signal.Symbol, e.orderBookDepth)
+	if err != nil {
+		logger.Warn("获取订单簿失败，跳过流动性检查",
+			zap.String("symbol", signal.Symbol),
+			zap.Error(err),
+		)
+		return nil // 容错通过
+	}
+
+	if orderBook == nil {
+		return nil
+	}
+
+	// 确定使用订单簿的哪一侧
+	var levels []types.OrderBookLevel
+	var bestPrice float64
+	if signal.Type == types.SignalTypeBuy {
+		levels = orderBook.Asks
+		if len(levels) > 0 {
+			bestPrice = levels[0].Price
+		}
+	} else {
+		levels = orderBook.Bids
+		if len(levels) > 0 {
+			bestPrice = levels[0].Price
+		}
+	}
+
+	if len(levels) == 0 || bestPrice <= 0 {
+		return nil
+	}
+
+	// 计算可用流动性和预估成交价格
+	remaining := signal.Quantity
+	totalValue := 0.0
+	availableQty := 0.0
+
+	for _, level := range levels {
+		if level.Price <= 0 || level.Size <= 0 {
+			continue
+		}
+		fillQty := remaining
+		if fillQty > level.Size {
+			fillQty = level.Size
+		}
+		totalValue += fillQty * level.Price
+		availableQty += level.Size
+		remaining -= fillQty
+		if remaining <= 0 {
+			break
+		}
+	}
+
+	// 流动性不足检查
+	if remaining > 0 {
+		logger.Warn("流动性不足",
+			zap.String("symbol", signal.Symbol),
+			zap.Float64("required", signal.Quantity),
+			zap.Float64("available", availableQty),
+		)
+		return ErrLiquidityInsufficient
+	}
+
+	// 计算预估滑点
+	if signal.Quantity <= 0 || totalValue <= 0 {
+		return nil
+	}
+	avgPrice := totalValue / signal.Quantity
+
+	var slippage float64
+	if signal.Type == types.SignalTypeBuy {
+		slippage = (avgPrice - bestPrice) / bestPrice
+	} else {
+		slippage = (bestPrice - avgPrice) / bestPrice
+	}
+
+	if slippage > e.maxSlippage {
+		logger.Warn("预估滑点超过阈值",
+			zap.String("symbol", signal.Symbol),
+			zap.Float64("slippage", slippage),
+			zap.Float64("max_slippage", e.maxSlippage),
+		)
+		return ErrPriceDeviationTooHigh
+	}
+
 	return nil
 }
 

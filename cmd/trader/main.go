@@ -103,8 +103,40 @@ func invokeStrategyStopHook(instance strategy.Strategy) string {
 
 func main() {
 	var configPath string
-	flag.StringVar(&configPath, "config", "", "配置文件路径")
+	var env string
+	flag.StringVar(&configPath, "config", "", "配置文件路径 (优先级高于 -env)")
+	flag.StringVar(&env, "env", "", "运行环境: simulation(模拟盘) 或 production(实盘)，也可通过 QUANT_ENV 环境变量设置")
 	flag.Parse()
+
+	// 环境切换逻辑：命令行参数 > 环境变量 > 默认配置
+	if configPath == "" {
+		// 优先使用命令行参数
+		if env == "" {
+			env = os.Getenv("QUANT_ENV")
+		}
+
+		// 根据环境选择配置文件
+		switch strings.ToLower(env) {
+		case "simulation", "sim":
+			configPath = "configs/config.sim.yaml"
+			fmt.Println("============================================")
+			fmt.Println("  环境模式: 模拟盘 (SIMULATION)")
+			fmt.Println("  配置文件: configs/config.sim.yaml")
+			fmt.Println("============================================")
+		case "production", "prod":
+			configPath = "configs/config.prod.yaml"
+			fmt.Println("============================================")
+			fmt.Println("  环境模式: 实盘 (PRODUCTION)")
+			fmt.Println("  配置文件: configs/config.prod.yaml")
+			fmt.Println("  警告: 将使用真实资金!")
+			fmt.Println("============================================")
+		default:
+			configPath = "configs/config.yaml"
+			if env != "" {
+				fmt.Fprintf(os.Stderr, "未知环境: %s，使用默认配置\n", env)
+			}
+		}
+	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -212,7 +244,10 @@ func main() {
 		}
 	}
 
-	riskEngine := risk.NewEngine(&cfg.Risk)
+	riskEngine := risk.NewEngine(&cfg.Risk,
+		risk.WithLiquidityChecker(exchange,
+			cfg.Execution.SmartRouting.MaxEstimatedSlippage,
+			cfg.Execution.SmartRouting.OrderBookDepth))
 
 	riskEngine.SetStrategyWeights(map[string]float64{
 		"LiquidityHuntEngine":     0.15,
@@ -224,6 +259,14 @@ func main() {
 
 	strategyEngine := strategy.NewEngine()
 	managedStrategies := map[string]managedStrategy{}
+
+	// 策略启用状态日志
+	if cfg.Strategy.Enable {
+		logger.Info("策略模块已启用，开始初始化策略...")
+	} else {
+		logger.Warn("策略模块已禁用 (strategy.enable=false)，策略将初始化但不会主动交易",
+			zap.Bool("strategy.enable", cfg.Strategy.Enable))
+	}
 
 	logger.Info("初始化策略模块...")
 
@@ -590,16 +633,41 @@ func main() {
 	}
 	defer realTimePnL.Stop()
 
-	symbol := "BTC-USDT"
-	barInterval := "1m"
+	// 交易模式告警
+	if cfg.Exchange.OKX.Simulated {
+		logger.Info("============================================")
+		logger.Info("  交易模式: 模拟盘 (SIMULATION)")
+		logger.Info("  不会使用真实资金")
+		logger.Info("============================================")
+	} else {
+		logger.Warn("============================================")
+		logger.Warn("  交易模式: 实盘 (PRODUCTION)")
+		logger.Warn("  真实资金交易!")
+		logger.Warn("============================================")
+	}
 
-	logger.Info("订阅行情数据...",
-		zap.String("symbol", symbol),
-		zap.String("bar_interval", barInterval),
-	)
+	// 从配置读取交易标的和K线周期
+	symbol := cfg.Strategy.DefaultSymbol
+	if symbol == "" {
+		symbol = "BTC-USDT"
+	}
+	barInterval := cfg.Strategy.DefaultBarInterval
+	if barInterval == "" {
+		barInterval = "1m"
+	}
 
-	if err := subscribeStrategyMarketData(exchange, symbol, barInterval, strategyEngine, executeSignal); err != nil {
-		logger.Error("订阅行情数据失败", zap.Error(err))
+	// 策略启用时才订阅行情数据
+	if cfg.Strategy.Enable {
+		logger.Info("订阅行情数据...",
+			zap.String("symbol", symbol),
+			zap.String("bar_interval", barInterval),
+		)
+
+		if err := subscribeStrategyMarketData(exchange, symbol, barInterval, strategyEngine, executeSignal); err != nil {
+			logger.Error("订阅行情数据失败", zap.Error(err))
+		}
+	} else {
+		logger.Info("策略已禁用，跳过行情数据订阅")
 	}
 
 	logger.Info("系统启动完成，等待交易信号...")

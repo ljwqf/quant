@@ -79,6 +79,8 @@ monitoring:
 strategy:
   enable: false
   name: "example_strategy"
+  default_symbol: "BTC-USDT"
+  default_bar_interval: "1m"
   params: {}
   delta_neutral:
     fund_usage_percent: 0.9
