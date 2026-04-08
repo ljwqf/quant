@@ -66,3 +66,6 @@ configs/*
 !configs/config.yaml.example
 !configs/config.sim.yaml
 !configs/config.prod.yaml
+
+# Runtime data
+data/runtime/
