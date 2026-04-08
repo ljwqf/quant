@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/ljwqf/quant/pkg/logger"
+	"github.com/ljwqf/quant/pkg/types"
 	"go.uber.org/zap"
 )
 
@@ -29,12 +31,14 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHub WebSocket中心
 type WebSocketHub struct {
-	server     *Server
-	clients    map[*websocket.Conn]*WSClient
-	broadcast  chan []byte
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
-	mutex      sync.RWMutex
+	server        *Server
+	clients       map[*websocket.Conn]*WSClient
+	broadcast     chan []byte
+	register      chan *websocket.Conn
+	unregister    chan *websocket.Conn
+	mutex         sync.RWMutex
+	totalMessages int64
+	startedAt     time.Time
 }
 
 // WSMessage WebSocket消息 (保留向后兼容)
@@ -46,12 +50,42 @@ type WSMessage struct {
 // NewWebSocketHub 创建WebSocket中心
 func NewWebSocketHub(server *Server) *WebSocketHub {
 	return &WebSocketHub{
-		server:     server,
-		clients:    make(map[*websocket.Conn]*WSClient),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *websocket.Conn),
-		unregister: make(chan *websocket.Conn),
+		server:        server,
+		clients:       make(map[*websocket.Conn]*WSClient),
+		broadcast:     make(chan []byte, 256),
+		register:      make(chan *websocket.Conn),
+		unregister:    make(chan *websocket.Conn),
+		startedAt:     time.Now(),
 	}
+}
+
+// BroadcastStatus 广播系统状态
+func (h *WebSocketHub) BroadcastStatus() {
+	h.mutex.RLock()
+	clientCount := len(h.clients)
+	h.mutex.RUnlock()
+
+	data := &StatusData{
+		SystemStatus: "running",
+		ConnectedAt:  h.startedAt,
+		Uptime:       time.Since(h.startedAt),
+		ClientCount:   clientCount,
+		MessageCount:  h.totalMessages,
+	}
+	h.BroadcastTo(EventTypeStatus, data)
+}
+
+// BroadcastAlert 广播告警消息
+func (h *WebSocketHub) BroadcastAlert(level, source, message, code string, metadata map[string]interface{}) {
+	data := &AlertData{
+		Level:     level,
+		Source:    source,
+		Message:   message,
+		Code:      code,
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+	h.BroadcastTo(EventTypeAlert, data)
 }
 
 // Run 运行WebSocket中心
@@ -103,6 +137,10 @@ func (h *WebSocketHub) BroadcastTo(eventType EventType, data interface{}) {
 		return
 	}
 
+	h.mutex.Lock()
+	h.totalMessages++
+	h.mutex.Unlock()
+
 	h.mutex.RLock()
 	for _, client := range h.clients {
 		if client.IsSubscribed(eventType) {
@@ -110,6 +148,101 @@ func (h *WebSocketHub) BroadcastTo(eventType EventType, data interface{}) {
 		}
 	}
 	h.mutex.RUnlock()
+}
+
+// BroadcastTicker 广播行情数据
+func (h *WebSocketHub) BroadcastTicker(ticker *types.Tick) {
+	data := &TickerData{
+		Symbol:    ticker.Symbol,
+		Price:     ticker.Price,
+		Timestamp: ticker.Timestamp,
+	}
+	h.BroadcastTo(EventTypeTicker, data)
+}
+
+// BroadcastKline 广播K线数据
+func (h *WebSocketHub) BroadcastKline(bar *types.Bar, interval string) {
+	data := &KlineData{
+		Symbol:    bar.Symbol,
+		Interval:  interval,
+		Open:      bar.Open,
+		High:      bar.High,
+		Low:       bar.Low,
+		Close:     bar.Close,
+		Volume:    bar.Volume,
+		Timestamp: bar.Timestamp,
+	}
+	h.BroadcastTo(EventTypeKline, data)
+}
+
+// BroadcastOrderBook 广播订单簿数据
+func (h *WebSocketHub) BroadcastOrderBook(orderBook *types.OrderBook) {
+	// 转换订单簿数据格式
+	asks := make([][2]float64, 0, len(orderBook.Asks))
+	bids := make([][2]float64, 0, len(orderBook.Bids))
+
+	for _, ask := range orderBook.Asks {
+		asks = append(asks, [2]float64{ask.Price, ask.Size})
+	}
+	for _, bid := range orderBook.Bids {
+		bids = append(bids, [2]float64{bid.Price, bid.Size})
+	}
+
+	data := &OrderBookData{
+		Symbol:    orderBook.Symbol,
+		Asks:      asks,
+		Bids:      bids,
+		Timestamp: orderBook.Timestamp,
+	}
+	h.BroadcastTo(EventTypeOrderBook, data)
+}
+
+// GetClientCount 获取当前连接的客户端数量
+func (h *WebSocketHub) GetClientCount() int {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+	return len(h.clients)
+}
+
+// BroadcastOrderUpdate 广播订单更新
+func (h *WebSocketHub) BroadcastOrderUpdate(order *types.Order) {
+	data := &OrderUpdateData{
+		OrderID:   order.ID,
+		Symbol:    order.Symbol,
+		Side:      string(order.Side),
+		Status:    string(order.Status),
+		FilledQty: order.FilledQty,
+		AvgPrice:  order.AveragePrice,
+	}
+	h.BroadcastTo(EventTypeOrderUpdate, data)
+}
+
+// BroadcastPositionChange 广播持仓变化
+func (h *WebSocketHub) BroadcastPositionChange(position *types.Position, changeType string) {
+	data := &PositionChangeData{
+		Symbol:     position.Symbol,
+		Side:       string(position.Side),
+		ChangeType: changeType,
+		Size:       position.Size,
+		EntryPrice: position.EntryPrice,
+		PnL:        position.UnrealizedPnL,
+	}
+	h.BroadcastTo(EventTypePositionChange, data)
+}
+
+// BroadcastTrade 广播交易成交
+func (h *WebSocketHub) BroadcastTrade(trade *types.Trade) {
+	data := &TradeData{
+		TradeID:  trade.ID,
+		OrderID:  trade.OrderID,
+		Symbol:   trade.Symbol,
+		Side:     string(trade.Side),
+		Price:    trade.Price,
+		Quantity: trade.Quantity,
+		Fee:      trade.Fee,
+		IsMaker:  trade.IsMaker,
+	}
+	h.BroadcastTo(EventTypeTrade, data)
 }
 
 // HandleWebSocket 处理WebSocket连接
@@ -141,6 +274,8 @@ func (h *WebSocketHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
+
+		wsClient.RecordMessageReceived()
 
 		var cmd WSClientCommand
 		if err := json.Unmarshal(message, &cmd); err != nil {

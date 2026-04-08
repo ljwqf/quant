@@ -21,6 +21,7 @@ import (
 	"github.com/ljwqf/quant/internal/llmanalysis"
 	"github.com/ljwqf/quant/internal/manualtrading"
 	"github.com/ljwqf/quant/internal/monitoring"
+	"github.com/ljwqf/quant/internal/notifications"
 	"github.com/ljwqf/quant/internal/risk"
 	"github.com/ljwqf/quant/internal/storage"
 	"github.com/ljwqf/quant/internal/strategy"
@@ -242,6 +243,63 @@ func main() {
 				logger.Warn("启动提醒服务失败", zap.Error(err))
 			}
 		}
+	}
+
+	notificationMgr := notifications.NewNotificationManager(nil)
+	if cfg.Notifications.Enabled {
+		logger.Info("初始化通知管理器...")
+
+		if cfg.Notifications.Console.Enabled {
+			consoleChannel := notifications.NewConsoleChannel()
+			notificationMgr.RegisterChannel(consoleChannel)
+			logger.Info("控制台通知渠道已注册")
+		}
+
+		if cfg.Notifications.Telegram.Enabled {
+			telegramCfg := &notifications.TelegramConfig{
+				BotToken: cfg.Notifications.Telegram.BotToken,
+				ChatIDs:  []string{cfg.Notifications.Telegram.ChatID},
+			}
+			if telegramChannel, err := notifications.NewTelegramChannel(telegramCfg); err != nil {
+				logger.Warn("初始化Telegram通知渠道失败", zap.Error(err))
+			} else {
+				notificationMgr.RegisterChannel(telegramChannel)
+				logger.Info("Telegram通知渠道已注册")
+			}
+		}
+
+		if cfg.Notifications.Discord.Enabled {
+			discordCfg := &notifications.DiscordConfig{
+				WebhookURLs: []string{cfg.Notifications.Discord.WebhookURL},
+				Username:    "OKX Quant Bot",
+			}
+			if discordChannel, err := notifications.NewDiscordChannel(discordCfg); err != nil {
+				logger.Warn("初始化Discord通知渠道失败", zap.Error(err))
+			} else {
+				notificationMgr.RegisterChannel(discordChannel)
+				logger.Info("Discord通知渠道已注册")
+			}
+		}
+
+		if cfg.Notifications.Email.Enabled {
+			emailCfg := &notifications.EmailConfig{
+				SMTPHost:  cfg.Notifications.Email.SMTPHost,
+				SMTPPort:  cfg.Notifications.Email.SMTPPort,
+				Username:  cfg.Notifications.Email.Username,
+				Password:  cfg.Notifications.Email.Password,
+				FromEmail: cfg.Notifications.Email.From,
+				ToEmails:  []string{cfg.Notifications.Email.To},
+				UseTLS:    true,
+			}
+			if emailChannel, err := notifications.NewEmailChannel(emailCfg); err != nil {
+				logger.Warn("初始化Email通知渠道失败", zap.Error(err))
+			} else {
+				notificationMgr.RegisterChannel(emailChannel)
+				logger.Info("Email通知渠道已注册")
+			}
+		}
+
+		logger.Info("通知管理器初始化完成", zap.Strings("channels", notificationMgr.ListChannels()))
 	}
 
 	riskEngine := risk.NewEngine(&cfg.Risk,
@@ -626,7 +684,7 @@ func main() {
 		zap.Duration("max_holding_time", takeProfitConfig.MaxHoldingTime),
 	)
 
-	realTimePnL := monitoring.NewRealTimePnL(exchange, riskEngine, executionEngine, strategyEngine, metrics, alertManager)
+	realTimePnL := monitoring.NewRealTimePnL(exchange, riskEngine, executionEngine, strategyEngine, metrics, alertManager, cfg.Exchange.OKX.Simulated)
 
 	if err := realTimePnL.Start(); err != nil {
 		logger.Error("启动实时P&L监控失败", zap.Error(err))
@@ -833,6 +891,8 @@ func main() {
 		alertService.RegisterChannel(wsAdapter)
 		logger.Info("WebSocket提醒通道已注册")
 	}
+	apiServer.SetNotificationManager(notificationMgr)
+	apiServer.SetStrategyEngine(strategyEngine)
 	go func() {
 		if err := apiServer.Start(); err != nil {
 			logger.Error("API服务器启动失败", zap.Error(err))

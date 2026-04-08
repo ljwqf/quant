@@ -7,11 +7,18 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ljwqf/quant/internal/alertservice"
 	"github.com/ljwqf/quant/internal/config"
+	"github.com/ljwqf/quant/internal/dataservice"
+	"github.com/ljwqf/quant/internal/llmanalysis"
+	"github.com/ljwqf/quant/internal/manualtrading"
+	"github.com/ljwqf/quant/internal/storage"
 	"github.com/ljwqf/quant/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,6 +56,14 @@ func TestGetConfigMasksSecrets(t *testing.T) {
 	assert.Equal(t, "okx-quant", masked.Basic.AppName)
 }
 
+func TestGetConfigReturnsNotFoundWhenConfigMissing(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, nil, "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/config", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "Config not loaded")
+}
+
 func TestSaveConfigPreservesMaskedSecrets(t *testing.T) {
 	original := testConfig()
 	s := NewServer("127.0.0.1", 8765, original, "", nil)
@@ -70,6 +85,27 @@ func TestSaveConfigPreservesMaskedSecrets(t *testing.T) {
 	assert.Equal(t, original.Exchange.OKX.APIKey, s.cfg.Exchange.OKX.APIKey)
 	assert.Equal(t, original.Exchange.OKX.SecretKey, s.cfg.Exchange.OKX.SecretKey)
 	assert.Equal(t, original.Exchange.OKX.Passphrase, s.cfg.Exchange.OKX.Passphrase)
+}
+
+func TestSaveConfigWritesFileWhenConfigPathSet(t *testing.T) {
+	original := testConfig()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	s := NewServer("127.0.0.1", 8765, original, configPath, nil)
+
+	updated := testConfig()
+	updated.Basic.AppName = "persisted-app"
+	updated.Risk.MaxRiskPerTrade = 0.2
+	updated.Risk.MaxExposurePerSymbol = 0.4
+	payload, err := json.Marshal(updated)
+	require.NoError(t, err)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/config", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "persisted-app")
+	assert.Contains(t, string(data), "maxriskpertrade")
 }
 
 func TestSaveConfigRejectsRemoteWithoutToken(t *testing.T) {
@@ -118,6 +154,15 @@ func TestSaveConfigRejectsInvalidConfig(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), "应用名称不能为空")
 	assert.Equal(t, original.Basic.AppName, s.cfg.Basic.AppName)
+}
+
+func TestSaveConfigRejectsInvalidJSON(t *testing.T) {
+	original := testConfig()
+	s := NewServer("127.0.0.1", 8765, original, "", nil)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/config", bytes.NewReader([]byte(`{"basic":`)), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "unexpected EOF")
 }
 
 func TestRemoteStrategyStartRequiresToken(t *testing.T) {
@@ -441,6 +486,57 @@ func TestWebSocketAllowsTokenWithSameOrigin(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
+func TestHandleReadyReturnsOKWhenSystemRunning(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.mutex.Lock()
+	s.systemStatus.Running = true
+	s.systemStatus.ExchangeConnected = true
+	s.systemStatus.StartTime = time.Now().Add(-time.Minute)
+	s.mutex.Unlock()
+
+	recorder := performRequest(t, s, http.MethodGet, "/ready", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"ready":true`)
+}
+
+func TestAuthenticateRequestMissingTokenWhenRequired(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.apiToken = "token-123"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.RemoteAddr = "203.0.113.10:4321"
+	recorder := httptest.NewRecorder()
+
+	assert.False(t, s.authenticateRequest(recorder, req))
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "缺少认证令牌")
+}
+
+func TestAuthenticateRequestRejectsInvalidToken(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.apiToken = "token-123"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.RemoteAddr = "203.0.113.10:4321"
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	recorder := httptest.NewRecorder()
+
+	assert.False(t, s.authenticateRequest(recorder, req))
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "无效的认证令牌")
+}
+
+func TestAuthenticateRequestAllowsTrustedRequestWithoutToken(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	recorder := httptest.NewRecorder()
+
+	assert.True(t, s.authenticateRequest(recorder, req))
+	require.Equal(t, http.StatusOK, recorder.Code)
+}
+
 func TestHealthEndpointReturnsOK(t *testing.T) {
 	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
 
@@ -505,6 +601,143 @@ func testConfig() *config.Config {
 	}
 }
 
+type apiManualTradeExchange struct {
+	mu            sync.Mutex
+	tickers       map[string]float64
+	positions     []*types.Position
+	orders        []*types.Order
+	cancelledIDs  []string
+	leverageCalls []apiManualLeverageCall
+	account       *types.Account
+}
+
+type apiManualLeverageCall struct {
+	Symbol     string
+	Leverage   int
+	MarginMode string
+}
+
+func newAPIManualTradeExchange() *apiManualTradeExchange {
+	return &apiManualTradeExchange{
+		tickers: map[string]float64{
+			"BTC-USDT": 50000,
+			"ETH-USDT": 3000,
+		},
+		positions: []*types.Position{
+			{
+				Symbol:     "BTC-USDT",
+				Side:       types.OrderSideBuy,
+				Size:       0.5,
+				EntryPrice: 48000,
+				MarkPrice:  50000,
+				Timestamp:  time.Now(),
+			},
+		},
+		account: &types.Account{Timestamp: time.Now()},
+	}
+}
+
+func (m *apiManualTradeExchange) Connect() error { return nil }
+
+func (m *apiManualTradeExchange) Disconnect() error { return nil }
+
+func (m *apiManualTradeExchange) GetAccount() (*types.Account, error) { return m.account, nil }
+
+func (m *apiManualTradeExchange) PlaceOrder(order *types.Order) (*types.OrderResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.orders = append(m.orders, order)
+	result := &types.OrderResult{
+		OrderID:   "order-" + order.Symbol + "-" + time.Now().Format("150405.000"),
+		Symbol:    order.Symbol,
+		Side:      order.Side,
+		Type:      order.Type,
+		Quantity:  order.Quantity,
+		Price:     order.Price,
+		Status:    types.OrderStatusFilled,
+		Timestamp: time.Now(),
+	}
+	return result, nil
+}
+
+func (m *apiManualTradeExchange) CancelOrder(orderID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cancelledIDs = append(m.cancelledIDs, orderID)
+	return nil
+}
+
+func (m *apiManualTradeExchange) GetOrder(orderID string) (*types.Order, error) { return nil, nil }
+
+func (m *apiManualTradeExchange) GetOrders(symbol string, limit int) ([]*types.Order, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]*types.Order(nil), m.orders...), nil
+}
+
+func (m *apiManualTradeExchange) GetPositions() ([]*types.Position, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]*types.Position(nil), m.positions...), nil
+}
+
+func (m *apiManualTradeExchange) SubscribeTicker(symbol string, handler func(*types.Tick)) error {
+	return nil
+}
+
+func (m *apiManualTradeExchange) SubscribeBar(symbol string, interval string, handler func(*types.Bar)) error {
+	return nil
+}
+
+func (m *apiManualTradeExchange) SubscribeOrderBook(symbol string, handler func(*types.OrderBook)) error {
+	return nil
+}
+
+func (m *apiManualTradeExchange) GetBars(symbol string, interval string, limit int) ([]*types.Bar, error) {
+	return nil, nil
+}
+
+func (m *apiManualTradeExchange) GetTicker(symbol string) (*types.Tick, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	price, ok := m.tickers[symbol]
+	if !ok {
+		price = 0
+	}
+	return &types.Tick{Symbol: symbol, Price: price, Timestamp: time.Now()}, nil
+}
+
+func (m *apiManualTradeExchange) GetOrderBook(symbol string, depth int) (*types.OrderBook, error) {
+	return nil, nil
+}
+
+func (m *apiManualTradeExchange) SetLeverage(symbol string, leverage int, marginMode string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.leverageCalls = append(m.leverageCalls, apiManualLeverageCall{Symbol: symbol, Leverage: leverage, MarginMode: marginMode})
+	return nil
+}
+
+func newAPIManualTradeServer(t *testing.T) (*Server, *apiManualTradeExchange) {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "manual-trading.db")
+	db := storage.NewDatabase(&config.DatabaseConfig{Enable: true, Type: "sqlite", Path: dbPath})
+	require.NotNil(t, db)
+	require.NoError(t, db.Migrate())
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	exchange := newAPIManualTradeExchange()
+	mgr := manualtrading.NewManager(&config.ManualTradingConfig{Enable: true}, db, exchange)
+	require.NotNil(t, mgr)
+
+	server := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	server.SetManualTradeManager(mgr)
+	return server, exchange
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
@@ -566,6 +799,16 @@ func TestUpdateSystemStatus(t *testing.T) {
 	// Broadcast to websocket
 	msg := readWSMessage(t, s)
 	assert.Equal(t, "status", msg.Type)
+}
+
+func TestUpdateSystemStatusNil(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	before := s.systemStatus
+	assert.NotPanics(t, func() {
+		s.UpdateSystemStatus(nil)
+	})
+	assert.Equal(t, before, s.systemStatus)
 }
 
 func TestUpdateStrategyStatus(t *testing.T) {
@@ -759,12 +1002,12 @@ func TestStartStop(t *testing.T) {
 
 	// Wait a bit for the server to start
 	time.Sleep(100 * time.Millisecond)
-	assert.True(t, s.systemStatus.Running)
+	assert.True(t, s.IsRunning())
 
 	// Stop the server
 	err := s.Stop()
 	require.NoError(t, err)
-	assert.False(t, s.systemStatus.Running)
+	assert.False(t, s.IsRunning())
 }
 
 func TestIsTrustedRequest(t *testing.T) {
@@ -851,6 +1094,149 @@ func TestHandleManualCreateOrderWithoutManager(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), "Manual trading not enabled")
+}
+
+func TestHandleManualOrderLifecycleWithManager(t *testing.T) {
+	s, exchange := newAPIManualTradeServer(t)
+
+	payload := []byte(`{"symbol":"BTC-USDT","side":"buy","type":"market","size":0.1,"leverage":3}`)
+	createRecorder := performRequest(t, s, http.MethodPost, "/api/manual/order", bytes.NewReader(payload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, createRecorder.Code)
+
+	var createResp struct {
+		Status string              `json:"status"`
+		Trade  storage.ManualTrade `json:"trade"`
+	}
+	require.NoError(t, json.Unmarshal(createRecorder.Body.Bytes(), &createResp))
+	require.NotEmpty(t, createResp.Trade.OrderID)
+	assert.Equal(t, "success", createResp.Status)
+	assert.Equal(t, "pending", createResp.Trade.Status)
+
+	exchange.mu.Lock()
+	require.Len(t, exchange.orders, 1)
+	exchange.mu.Unlock()
+
+	listRecorder := performRequest(t, s, http.MethodGet, "/api/manual/orders?symbol=BTC-USDT&limit=10&offset=0", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, listRecorder.Code)
+
+	var listResp struct {
+		Status string                 `json:"status"`
+		Orders []*storage.ManualTrade `json:"orders"`
+	}
+	require.NoError(t, json.Unmarshal(listRecorder.Body.Bytes(), &listResp))
+	require.Len(t, listResp.Orders, 1)
+	assert.Equal(t, createResp.Trade.OrderID, listResp.Orders[0].OrderID)
+	assert.Equal(t, "pending", listResp.Orders[0].Status)
+
+	cancelRecorder := performRequest(t, s, http.MethodDelete, "/api/manual/order/"+createResp.Trade.OrderID, nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, cancelRecorder.Code)
+	assert.Contains(t, cancelRecorder.Body.String(), createResp.Trade.OrderID)
+
+	exchange.mu.Lock()
+	require.Contains(t, exchange.cancelledIDs, createResp.Trade.OrderID)
+	exchange.mu.Unlock()
+
+	listAfterCancel := performRequest(t, s, http.MethodGet, "/api/manual/orders?symbol=BTC-USDT&limit=10&offset=0", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, listAfterCancel.Code)
+	require.NoError(t, json.Unmarshal(listAfterCancel.Body.Bytes(), &listResp))
+	require.Len(t, listResp.Orders, 1)
+	assert.Equal(t, "cancelled", listResp.Orders[0].Status)
+}
+
+func TestHandleManualPositionEndpointsWithManager(t *testing.T) {
+	s, exchange := newAPIManualTradeServer(t)
+
+	closePayload := []byte(`{"symbol":"BTC-USDT","size":0.2}`)
+	closeRecorder := performRequest(t, s, http.MethodPost, "/api/manual/position/close", bytes.NewReader(closePayload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, closeRecorder.Code)
+	assert.Contains(t, closeRecorder.Body.String(), "BTC-USDT")
+
+	exchange.mu.Lock()
+	require.NotEmpty(t, exchange.orders)
+	closeOrder := exchange.orders[len(exchange.orders)-1]
+	exchange.mu.Unlock()
+	assert.Equal(t, types.OrderSideSell, closeOrder.Side)
+	assert.InDelta(t, 0.2, closeOrder.Quantity, 1e-9)
+
+	tpSlPayload := []byte(`{"symbol":"BTC-USDT","take_profit":55000,"stop_loss":45000}`)
+	tpSlRecorder := performRequest(t, s, http.MethodPost, "/api/manual/position/tp-sl", bytes.NewReader(tpSlPayload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, tpSlRecorder.Code)
+	assert.Contains(t, tpSlRecorder.Body.String(), "success")
+
+	leveragePayload := []byte(`{"symbol":"BTC-USDT","leverage":5,"margin_mode":"isolated"}`)
+	leverageRecorder := performRequest(t, s, http.MethodPost, "/api/manual/position/leverage", bytes.NewReader(leveragePayload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, leverageRecorder.Code)
+
+	exchange.mu.Lock()
+	require.Len(t, exchange.leverageCalls, 1)
+	assert.Equal(t, "BTC-USDT", exchange.leverageCalls[0].Symbol)
+	assert.Equal(t, 5, exchange.leverageCalls[0].Leverage)
+	assert.Equal(t, "isolated", exchange.leverageCalls[0].MarginMode)
+	exchange.mu.Unlock()
+
+	trailingPayload := []byte(`{"symbol":"BTC-USDT","stop_distance":5}`)
+	trailingRecorder := performRequest(t, s, http.MethodPost, "/api/manual/position/trailing-stop", bytes.NewReader(trailingPayload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, trailingRecorder.Code)
+	assert.Contains(t, trailingRecorder.Body.String(), "BTC-USDT")
+}
+
+func TestHandleTimedAndConditionalOrderEndpointsWithManager(t *testing.T) {
+	s, _ := newAPIManualTradeServer(t)
+
+	futureExecuteAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	timedPayload := []byte(`{"symbol":"BTC-USDT","side":"buy","size":0.1,"execute_at":"` + futureExecuteAt + `"}`)
+	timedRecorder := performRequest(t, s, http.MethodPost, "/api/manual/timed-order", bytes.NewReader(timedPayload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, timedRecorder.Code)
+
+	var timedResp struct {
+		Status string                   `json:"status"`
+		Order  manualtrading.TimedOrder `json:"order"`
+	}
+	require.NoError(t, json.Unmarshal(timedRecorder.Body.Bytes(), &timedResp))
+	require.NotEmpty(t, timedResp.Order.ID)
+	assert.Equal(t, manualtrading.TimedOrderStatusPending, timedResp.Order.Status)
+
+	timedList := performRequest(t, s, http.MethodGet, "/api/manual/timed-orders?status=pending", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, timedList.Code)
+
+	var timedListResp struct {
+		Status string                      `json:"status"`
+		Orders []*manualtrading.TimedOrder `json:"orders"`
+	}
+	require.NoError(t, json.Unmarshal(timedList.Body.Bytes(), &timedListResp))
+	require.Len(t, timedListResp.Orders, 1)
+	assert.Equal(t, timedResp.Order.ID, timedListResp.Orders[0].ID)
+
+	timedCancel := performRequest(t, s, http.MethodDelete, "/api/manual/timed-order/"+timedResp.Order.ID, nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, timedCancel.Code)
+	assert.Contains(t, timedCancel.Body.String(), timedResp.Order.ID)
+
+	conditionalPayload := []byte(`{"symbol":"ETH-USDT","side":"sell","size":1,"order_type":"limit","conditional_type":"price","price":3000,"condition":{"direction":"above","price":3000}}`)
+	conditionalRecorder := performRequest(t, s, http.MethodPost, "/api/manual/conditional-order", bytes.NewReader(conditionalPayload), "127.0.0.1:12345", map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, conditionalRecorder.Code)
+
+	var conditionalResp struct {
+		Status string                         `json:"status"`
+		Order  manualtrading.ConditionalOrder `json:"order"`
+	}
+	require.NoError(t, json.Unmarshal(conditionalRecorder.Body.Bytes(), &conditionalResp))
+	require.NotEmpty(t, conditionalResp.Order.ID)
+	assert.Equal(t, manualtrading.ConditionalOrderStatusPending, conditionalResp.Order.Status)
+
+	conditionalList := performRequest(t, s, http.MethodGet, "/api/manual/conditional-orders?status=pending", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, conditionalList.Code)
+
+	var conditionalListResp struct {
+		Status string                            `json:"status"`
+		Orders []*manualtrading.ConditionalOrder `json:"orders"`
+	}
+	require.NoError(t, json.Unmarshal(conditionalList.Body.Bytes(), &conditionalListResp))
+	require.Len(t, conditionalListResp.Orders, 1)
+	assert.Equal(t, conditionalResp.Order.ID, conditionalListResp.Orders[0].ID)
+
+	conditionalCancel := performRequest(t, s, http.MethodDelete, "/api/manual/conditional-order/"+conditionalResp.Order.ID, nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, conditionalCancel.Code)
+	assert.Contains(t, conditionalCancel.Body.String(), conditionalResp.Order.ID)
 }
 
 func TestHandleManualListOrdersWithoutManager(t *testing.T) {
@@ -1374,4 +1760,62 @@ func TestHandleSendAlertWrongMethod(t *testing.T) {
 
 	recorder := performRequest(t, s, http.MethodGet, "/api/alerts/send", nil, "127.0.0.1:12345", nil)
 	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestHandleLLMAnalyze(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	s.cfg.LLM.Enable = true
+	s.cfg.LLM.Provider = "openai"
+	client := llmanalysis.NewClient(&s.cfg.LLM)
+	s.analyzer = llmanalysis.NewAnalyzer(client, nil, &s.cfg.LLM)
+
+	reqBody := `{"trade_history": "some history", "current_market_data": "some data", "question": "Should I buy?"}`
+	recorder := performRequest(t, s, http.MethodPost, "/api/llm/analyze/trade", bytes.NewReader([]byte(reqBody)), "127.0.0.1:12345", nil)
+
+	require.Contains(t, []int{http.StatusOK, http.StatusInternalServerError, http.StatusBadRequest}, recorder.Code)
+}
+
+func TestHandleDataEndpointsWithService(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "data.db")
+	db := storage.NewDatabase(&config.DatabaseConfig{Enable: true, Type: "sqlite", Path: dbPath})
+	require.NotNil(t, db)
+	require.NoError(t, db.Migrate())
+	defer db.Close()
+
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.dataService = dataservice.NewDataService(s.cfg, db)
+
+	recorder := performRequest(t, s, http.MethodPost, "/api/data/collect", nil, "127.0.0.1:12345", nil)
+	require.Contains(t, []int{http.StatusOK, http.StatusInternalServerError, http.StatusBadRequest}, recorder.Code)
+}
+
+func TestHandleAlertEndpointsWithService(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "alert.db")
+	db := storage.NewDatabase(&config.DatabaseConfig{Enable: true, Type: "sqlite", Path: dbPath})
+	require.NotNil(t, db)
+	require.NoError(t, db.Migrate())
+	defer db.Close()
+
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.alertService = alertservice.NewAlertService(s.cfg, db)
+
+	reqBody := `{"level": "info", "message": "test alert"}`
+	recorder := performRequest(t, s, http.MethodPost, "/api/alerts/send", bytes.NewReader([]byte(reqBody)), "127.0.0.1:12345", nil)
+
+	require.Contains(t, []int{http.StatusOK, http.StatusInternalServerError, http.StatusBadRequest}, recorder.Code)
+}
+
+func TestHandleOtherLLMEndpoints(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.cfg.LLM.Enable = true
+	s.cfg.LLM.Provider = "openai"
+	client := llmanalysis.NewClient(&s.cfg.LLM)
+	s.analyzer = llmanalysis.NewAnalyzer(client, nil, &s.cfg.LLM)
+	reqBody := `{"question": "What is next?"}`
+	paths := []string{"/api/llm/analyze/positions", "/api/llm/analyze/market", "/api/llm/analyze/orders", "/api/llm/history"}
+	for _, path := range paths {
+		recorder := performRequest(t, s, http.MethodPost, path, bytes.NewReader([]byte(reqBody)), "127.0.0.1:12345", nil)
+		require.Contains(t, []int{http.StatusOK, http.StatusInternalServerError, http.StatusMethodNotAllowed, http.StatusBadRequest}, recorder.Code)
+	}
 }

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OKX量化交易系统 Dashboard</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="dashboard">
@@ -14,6 +15,9 @@
                 <h1>OKX量化交易系统</h1>
             </div>
             <div class="status-bar">
+                <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+                    <span class="theme-icon">🌙</span>
+                </button>
                 <a href="/config.html" class="btn btn-secondary" style="text-decoration: none; margin-right: 1rem;">配置管理</a>
                 <span id="connection-status" class="status-indicator disconnected">未连接</span>
                 <span id="server-time"></span>
@@ -59,6 +63,96 @@
                 </div>
             </section>
 
+            <!-- 技术指标可视化 -->
+            <section class="section charts-section">
+                <h2>技术指标可视化</h2>
+                
+                <!-- 技术指标配置 -->
+                <div class="indicator-config" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color);">
+                    <div class="form-group" style="flex: 1; min-width: 150px;">
+                        <label>交易对</label>
+                        <select id="indicator-symbol">
+                            <option value="BTC-USDT-SWAP">BTC-USDT-SWAP</option>
+                            <option value="ETH-USDT-SWAP">ETH-USDT-SWAP</option>
+                            <option value="SOL-USDT-SWAP">SOL-USDT-SWAP</option>
+                            <option value="DOGE-USDT-SWAP">DOGE-USDT-SWAP</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1; min-width: 150px;">
+                        <label>时间周期</label>
+                        <select id="indicator-interval">
+                            <option value="1m">1分钟</option>
+                            <option value="5m">5分钟</option>
+                            <option value="15m">15分钟</option>
+                            <option value="1h" selected>1小时</option>
+                            <option value="4h">4小时</option>
+                            <option value="1d">1天</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 2; min-width: 200px;">
+                        <label>技术指标</label>
+                        <select id="indicator-type" onchange="updateIndicatorParams()">
+                            <option value="MACD">MACD</option>
+                            <option value="RSI">RSI</option>
+                            <option value="BOLL">布林带 (Bollinger)</option>
+                            <option value="ATR">ATR</option>
+                            <option value="ADX">ADX</option>
+                            <option value="PRICE">价格走势</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="indicator-params-container" style="flex: 2; min-width: 200px;">
+                        <label>指标参数</label>
+                        <div id="indicator-params" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+                    </div>
+                    <div class="form-group" style="flex: 0; min-width: 120px; align-self: flex-end;">
+                        <button class="btn btn-primary" onclick="refreshIndicatorChart()" style="width: 100%;">刷新图表</button>
+                    </div>
+                </div>
+                
+                <div class="charts-container">
+                    <div class="chart-wrapper" style="flex: 2; min-height: 400px;">
+                        <h3 id="price-chart-title">价格走势</h3>
+                        <canvas id="price-chart"></canvas>
+                    </div>
+                    <div class="chart-wrapper" style="flex: 1; min-height: 400px;">
+                        <h3 id="indicator-chart-title">技术指标</h3>
+                        <canvas id="indicator-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="charts-container" style="margin-top: 1.5rem;">
+                    <div class="chart-wrapper">
+                        <h3>盈亏走势</h3>
+                        <canvas id="pnl-chart"></canvas>
+                    </div>
+                    <div class="chart-wrapper">
+                        <h3>策略性能对比</h3>
+                        <canvas id="strategy-performance-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section system-status">
+                <h2>WebSocket状态</h2>
+                <div class="cards">
+                    <div class="card">
+                        <div class="card-title">客户端数量</div>
+                        <div class="card-value" id="ws-client-count">--</div>
+                        <div class="card-unit">个</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">消息总数</div>
+                        <div class="card-value" id="ws-message-count">--</div>
+                        <div class="card-unit">条</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">运行时间</div>
+                        <div class="card-value" id="ws-uptime">--</div>
+                        <div class="card-unit"></div>
+                    </div>
+                </div>
+            </section>
+
             <section class="section system-status">
                 <h2>Rebalance 熔断</h2>
                 <div class="cards">
@@ -92,6 +186,31 @@
                 </div>
             </section>
 
+            <!-- 市场数据 -->
+            <section class="section market-data">
+                <h2>市场数据</h2>
+                <div class="market-data-container">
+                    <!-- BTC-USDT -->
+                    <div class="market-pair" id="ticker-BTC-USDT">
+                        <h3>BTC-USDT</h3>
+                        <div class="ticker-price">--</div>
+                        <div class="orderbook">
+                            <div class="orderbook-asks"></div>
+                            <div class="orderbook-bids"></div>
+                        </div>
+                    </div>
+                    <!-- ETH-USDT -->
+                    <div class="market-pair" id="ticker-ETH-USDT">
+                        <h3>ETH-USDT</h3>
+                        <div class="ticker-price">--</div>
+                        <div class="orderbook">
+                            <div class="orderbook-asks"></div>
+                            <div class="orderbook-bids"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- 策略状态 -->
             <section class="section strategies">
                 <h2>策略状态</h2>
@@ -104,16 +223,30 @@
                                 <th>盈亏</th>
                                 <th>胜率</th>
                                 <th>交易次数</th>
+                                <th>权重</th>
                                 <th>最近信号</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
                         <tbody id="strategies-body">
                             <tr>
-                                <td colspan="7" class="loading">加载中...</td>
+                                <td colspan="8" class="loading">加载中...</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+                
+                <!-- 策略参数配置面板 -->
+                <div id="strategy-param-panel" class="strategy-param-panel hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 id="param-panel-title">策略参数配置</h3>
+                        <button class="btn btn-small btn-secondary" onclick="closeStrategyParamPanel()">关闭</button>
+                    </div>
+                    <div id="strategy-param-content"></div>
+                    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                        <button class="btn btn-primary" onclick="saveStrategyParams()">保存配置</button>
+                        <button class="btn btn-secondary" onclick="resetStrategyParams()">重置默认</button>
+                    </div>
                 </div>
             </section>
 
@@ -213,6 +346,7 @@
                     <button class="panel-tab" onclick="switchPanelTab('orders')">订单</button>
                     <button class="panel-tab" onclick="switchPanelTab('positions')">持仓</button>
                     <button class="panel-tab" onclick="switchPanelTab('timed')">限时单</button>
+                    <button class="panel-tab" onclick="switchPanelTab('conditional')">条件单</button>
                 </div>
                 
                 <div class="panel-tab-content" id="tab-trade">
@@ -315,6 +449,71 @@
                             <div class="loading-text">加载中...</div>
                         </div>
                         <button class="btn btn-small btn-secondary" onclick="refreshTimedOrders()">刷新</button>
+                    </div>
+                </div>
+                
+                <div class="panel-tab-content hidden" id="tab-conditional">
+                    <div class="form-group">
+                        <label>标的</label>
+                        <select id="conditional-trade-symbol">
+                            <option value="BTC-USDT-SWAP">BTC-USDT-SWAP</option>
+                            <option value="ETH-USDT-SWAP">ETH-USDT-SWAP</option>
+                            <option value="SOL-USDT-SWAP">SOL-USDT-SWAP</option>
+                            <option value="DOGE-USDT-SWAP">DOGE-USDT-SWAP</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>方向</label>
+                        <select id="conditional-trade-side">
+                            <option value="buy">买入</option>
+                            <option value="sell">卖出</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>数量</label>
+                        <input type="number" id="conditional-trade-size" placeholder="请输入数量" step="0.001">
+                    </div>
+                    <div class="form-group">
+                        <label>订单类型</label>
+                        <select id="conditional-order-type">
+                            <option value="market">市价</option>
+                            <option value="limit">限价</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="conditional-price-input-group">
+                        <label>价格</label>
+                        <input type="number" id="conditional-trade-price" placeholder="限价单必填" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>条件类型</label>
+                        <select id="conditional-type" onchange="toggleConditionInputs()">
+                            <option value="price">价格条件</option>
+                            <option value="time">时间条件</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="price-condition-group">
+                        <label>价格方向</label>
+                        <select id="price-direction">
+                            <option value="above">大于等于</option>
+                            <option value="below">小于等于</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="price-value-group">
+                        <label>触发价格</label>
+                        <input type="number" id="price-value" placeholder="请输入触发价格" step="0.01">
+                    </div>
+                    <div class="form-group hidden" id="time-condition-group">
+                        <label>执行时间</label>
+                        <input type="datetime-local" id="time-value">
+                    </div>
+                    <button class="btn btn-primary" onclick="submitConditionalOrder()">创建条件单</button>
+                    
+                    <div style="margin-top: 20px;">
+                        <h4>条件单列表</h4>
+                        <div id="conditional-orders-list">
+                            <div class="loading-text">加载中...</div>
+                        </div>
+                        <button class="btn btn-small btn-secondary" onclick="refreshConditionalOrders()">刷新</button>
                     </div>
                 </div>
             </div>

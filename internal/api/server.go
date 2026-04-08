@@ -14,13 +14,19 @@ import (
 	"time"
 
 	"github.com/ljwqf/quant/internal/alertservice"
+	"github.com/ljwqf/quant/internal/backtest"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/internal/dataservice"
+	"github.com/ljwqf/quant/internal/indicator"
 	"github.com/ljwqf/quant/internal/llmanalysis"
 	"github.com/ljwqf/quant/internal/manualtrading"
+	"github.com/ljwqf/quant/internal/monitoring"
+	"github.com/ljwqf/quant/internal/notifications"
 	"github.com/ljwqf/quant/internal/storage"
+	"github.com/ljwqf/quant/internal/strategy"
 	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"go.uber.org/zap"
 	"go.yaml.in/yaml/v3"
 )
@@ -56,22 +62,26 @@ type resetRebalanceCircuitRequest struct {
 
 // Server API服务器
 type Server struct {
-	port           int
-	host           string
-	server         *http.Server
-	mux            *http.ServeMux
-	wsHub          *WebSocketHub
-	mutex          sync.RWMutex
-	configPath     string
-	cfg            *config.Config
-	apiToken       string
-	trustedProxies []*net.IPNet
-	forceToken     bool
-	actions        *ActionHandlers
-	manualTradeMgr *manualtrading.Manager
-	analyzer       *llmanalysis.Analyzer
-	dataService    *dataservice.DataService
-	alertService   *alertservice.AlertService
+	port            int
+	host            string
+	server          *http.Server
+	mux             *http.ServeMux
+	wsHub           *WebSocketHub
+	mutex           sync.RWMutex
+	configPath      string
+	cfg             *config.Config
+	apiToken        string
+	trustedProxies  []*net.IPNet
+	forceToken      bool
+	actions         *ActionHandlers
+	manualTradeMgr  *manualtrading.Manager
+	analyzer        *llmanalysis.Analyzer
+	dataService     *dataservice.DataService
+	alertService    *alertservice.AlertService
+	notificationMgr *notifications.NotificationManager
+	indicatorSet    *indicator.IndicatorSet
+	metrics         *monitoring.Metrics
+	strategyEngine  *strategy.Engine
 
 	systemStatus *SystemStatus
 	strategies   map[string]*StrategyStatus
@@ -125,6 +135,20 @@ type createTimedOrderRequest struct {
 }
 
 type cancelTimedOrderRequest struct {
+	ID string `json:"id"`
+}
+
+type createConditionalOrderRequest struct {
+	Symbol          string                 `json:"symbol"`
+	Side            string                 `json:"side"`
+	Size            float64                `json:"size"`
+	OrderType       string                 `json:"order_type"`
+	ConditionalType string                 `json:"conditional_type"`
+	Condition       map[string]interface{} `json:"condition"`
+	Price           float64                `json:"price,omitempty"`
+}
+
+type cancelConditionalOrderRequest struct {
 	ID string `json:"id"`
 }
 
@@ -293,9 +317,28 @@ func (s *Server) SetAlertService(alertService *alertservice.AlertService) {
 	s.alertService = alertService
 }
 
+// SetNotificationManager 设置通知管理器
+func (s *Server) SetNotificationManager(notificationMgr *notifications.NotificationManager) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.notificationMgr = notificationMgr
+}
+
+// SetIndicatorSet 设置技术指标集
+func (s *Server) SetIndicatorSet(indicatorSet *indicator.IndicatorSet) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.indicatorSet = indicatorSet
+}
+
 // GetWebSocketHub 获取WebSocket Hub，用于注册WebSocket通道
 func (s *Server) GetWebSocketHub() *WebSocketHub {
 	return s.wsHub
+}
+
+// GetMux 获取HTTP ServeMux，用于测试
+func (s *Server) GetMux() *http.ServeMux {
+	return s.mux
 }
 
 // 大模型分析相关请求结构
@@ -350,6 +393,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/config", s.handleConfig)
 	s.mux.HandleFunc("/api/strategy/start/", s.handleStrategyStart)
 	s.mux.HandleFunc("/api/strategy/stop/", s.handleStrategyStop)
+	s.mux.HandleFunc("/api/strategy/params/", s.handleStrategyParams)
 	s.mux.HandleFunc("/api/order/create", s.handleCreateOrder)
 	s.mux.HandleFunc("/api/position/close/", s.handleClosePosition)
 	s.mux.HandleFunc("/api/rebalance/circuit", s.handleRebalanceCircuit)
@@ -371,6 +415,11 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/manual/timed-order/", s.handleCancelTimedOrder)
 	s.mux.HandleFunc("/api/manual/timed-orders", s.handleListTimedOrders)
 
+	// 条件单API路由
+	s.mux.HandleFunc("/api/manual/conditional-order", s.handleCreateConditionalOrder)
+	s.mux.HandleFunc("/api/manual/conditional-order/", s.handleCancelConditionalOrder)
+	s.mux.HandleFunc("/api/manual/conditional-orders", s.handleListConditionalOrders)
+
 	// 市场数据API路由
 	s.mux.HandleFunc("/api/market/ticker", s.handleGetTicker)
 	s.mux.HandleFunc("/api/market/bars", s.handleGetBars)
@@ -387,10 +436,29 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/data/news", s.handleGetNews)
 	s.mux.HandleFunc("/api/data/events", s.handleGetEvents)
 	s.mux.HandleFunc("/api/data/collect", s.handleCollectNow)
+	s.mux.HandleFunc("/api/data/history", s.handleGetHistoryData)
+	s.mux.HandleFunc("/api/data/ticks", s.handleGetTickData)
 
 	// 提醒服务API路由
 	s.mux.HandleFunc("/api/alerts", s.handleGetAlerts)
 	s.mux.HandleFunc("/api/alerts/send", s.handleSendAlert)
+
+	// 技术指标API路由
+	s.mux.HandleFunc("/api/indicators/calculate", s.handleCalculateIndicators)
+	s.mux.HandleFunc("/api/indicators/list", s.handleListIndicators)
+
+	// 回测API路由
+	s.mux.HandleFunc("/api/backtest/start", s.handleBacktestStart)
+	s.mux.HandleFunc("/api/backtest/strategies", s.handleBacktestStrategies)
+	s.mux.HandleFunc("/api/backtest/results/", s.handleBacktestGetResults)
+	s.mux.HandleFunc("/api/backtest/report/", s.handleBacktestGetReport)
+
+	// 监控API路由
+	s.mux.HandleFunc("/api/metrics", s.handleGetMetrics)
+	s.mux.HandleFunc("/api/metrics/prometheus", s.handlePrometheusMetrics)
+
+	// Swagger UI
+	s.mux.Handle("/swagger/", httpSwagger.WrapHandler)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -435,31 +503,52 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 // Start 启动服务器
 func (s *Server) Start() error {
-	s.server = &http.Server{
+	server := &http.Server{
 		Addr:    net.JoinHostPort(s.host, strconv.Itoa(s.port)),
 		Handler: s.mux,
 	}
 
-	go s.wsHub.Run()
-
+	s.mutex.Lock()
+	s.server = server
 	s.systemStatus.Running = true
 	s.systemStatus.StartTime = time.Now()
+	s.mutex.Unlock()
+
+	go s.wsHub.Run()
 
 	logger.Info("API服务器启动", zap.String("host", s.host), zap.Int("port", s.port))
-	return s.server.ListenAndServe()
+	return server.ListenAndServe()
 }
 
 // Stop 停止服务器
 func (s *Server) Stop() error {
+	s.mutex.Lock()
 	s.systemStatus.Running = false
-	if s.server != nil {
-		return s.server.Close()
+	server := s.server
+	s.mutex.Unlock()
+
+	if server != nil {
+		return server.Close()
 	}
 	return nil
 }
 
+// IsRunning 返回服务器运行状态。
+func (s *Server) IsRunning() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	if s.systemStatus == nil {
+		return false
+	}
+	return s.systemStatus.Running
+}
+
 // UpdateSystemStatus 更新系统状态
 func (s *Server) UpdateSystemStatus(status *SystemStatus) {
+	if status == nil {
+		return
+	}
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	status.Uptime = time.Since(s.systemStatus.StartTime).String()
@@ -953,6 +1042,10 @@ func (s *Server) maskedConfigLocked() *config.Config {
 	masked.Exchange.OKX.SecretKey = maskSecret(masked.Exchange.OKX.SecretKey)
 	masked.Exchange.OKX.Passphrase = maskSecret(masked.Exchange.OKX.Passphrase)
 	masked.Monitoring.Alert.WebhookURL = maskSecret(masked.Monitoring.Alert.WebhookURL)
+	masked.Notifications.Telegram.BotToken = maskSecret(masked.Notifications.Telegram.BotToken)
+	masked.Notifications.Telegram.ChatID = maskSecret(masked.Notifications.Telegram.ChatID)
+	masked.Notifications.Discord.WebhookURL = maskSecret(masked.Notifications.Discord.WebhookURL)
+	masked.Notifications.Email.Password = maskSecret(masked.Notifications.Email.Password)
 	return &masked
 }
 
@@ -972,6 +1065,18 @@ func mergeProtectedFields(newConfig, currentConfig *config.Config) {
 	}
 	if shouldPreserveSecret(newConfig.Monitoring.Alert.WebhookURL) {
 		newConfig.Monitoring.Alert.WebhookURL = currentConfig.Monitoring.Alert.WebhookURL
+	}
+	if shouldPreserveSecret(newConfig.Notifications.Telegram.BotToken) {
+		newConfig.Notifications.Telegram.BotToken = currentConfig.Notifications.Telegram.BotToken
+	}
+	if shouldPreserveSecret(newConfig.Notifications.Telegram.ChatID) {
+		newConfig.Notifications.Telegram.ChatID = currentConfig.Notifications.Telegram.ChatID
+	}
+	if shouldPreserveSecret(newConfig.Notifications.Discord.WebhookURL) {
+		newConfig.Notifications.Discord.WebhookURL = currentConfig.Notifications.Discord.WebhookURL
+	}
+	if shouldPreserveSecret(newConfig.Notifications.Email.Password) {
+		newConfig.Notifications.Email.Password = currentConfig.Notifications.Email.Password
 	}
 }
 
@@ -1553,6 +1658,148 @@ func (s *Server) handleListTimedOrders(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleCreateConditionalOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.requireMutationAccess(r); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	s.mutex.RLock()
+	mgr := s.manualTradeMgr
+	s.mutex.RUnlock()
+
+	if mgr == nil {
+		http.Error(w, "Manual trading not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req createConditionalOrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Symbol == "" {
+		http.Error(w, "symbol is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Side != "buy" && req.Side != "sell" {
+		http.Error(w, "side must be 'buy' or 'sell'", http.StatusBadRequest)
+		return
+	}
+
+	if req.Size <= 0 {
+		http.Error(w, "size must be greater than 0", http.StatusBadRequest)
+		return
+	}
+
+	if req.OrderType != "market" && req.OrderType != "limit" {
+		http.Error(w, "order_type must be 'market' or 'limit'", http.StatusBadRequest)
+		return
+	}
+
+	if req.ConditionalType == "" {
+		http.Error(w, "conditional_type is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Condition == nil {
+		http.Error(w, "condition is required", http.StatusBadRequest)
+		return
+	}
+
+	order, err := mgr.ConditionalOrderManager().CreateOrder(
+		req.Symbol,
+		types.OrderSide(req.Side),
+		req.Size,
+		types.OrderType(req.OrderType),
+		manualtrading.ConditionalOrderType(req.ConditionalType),
+		req.Condition,
+		req.Price,
+	)
+	if err != nil {
+		logger.Error("创建条件单失败", zap.Error(err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "success",
+		"order":  order,
+	})
+}
+
+func (s *Server) handleCancelConditionalOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.requireMutationAccess(r); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	s.mutex.RLock()
+	mgr := s.manualTradeMgr
+	s.mutex.RUnlock()
+
+	if mgr == nil {
+		http.Error(w, "Manual trading not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	orderID := strings.TrimPrefix(r.URL.Path, "/api/manual/conditional-order/")
+	if orderID == "" {
+		http.Error(w, "order_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := mgr.ConditionalOrderManager().CancelOrder(orderID); err != nil {
+		logger.Error("取消条件单失败", zap.Error(err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "success",
+		"order_id": orderID,
+	})
+}
+
+func (s *Server) handleListConditionalOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mutex.RLock()
+	mgr := s.manualTradeMgr
+	s.mutex.RUnlock()
+
+	if mgr == nil {
+		http.Error(w, "Manual trading not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	statusStr := r.URL.Query().Get("status")
+	var orders []*manualtrading.ConditionalOrder
+	if statusStr != "" {
+		orders = mgr.ConditionalOrderManager().ListOrders(manualtrading.ConditionalOrderStatus(statusStr))
+	} else {
+		orders = mgr.ConditionalOrderManager().ListOrders("")
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "success",
+		"orders": orders,
+	})
+}
+
 func (s *Server) handleGetTicker(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1957,6 +2204,19 @@ type sendAlertRequest struct {
 	Symbol  string `json:"symbol,omitempty"`
 }
 
+// 技术指标API请求结构
+type calculateIndicatorRequest struct {
+	Symbol     string            `json:"symbol"`
+	Interval   string            `json:"interval"`
+	Limit      int               `json:"limit,omitempty"`
+	Indicators []IndicatorConfig `json:"indicators"`
+}
+
+type IndicatorConfig struct {
+	Name   string                 `json:"name"`
+	Params map[string]interface{} `json:"params,omitempty"`
+}
+
 func (s *Server) handleGetAlerts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -2056,4 +2316,840 @@ func (s *Server) handleSendAlert(w http.ResponseWriter, r *http.Request) {
 		"status": "sent",
 		"alert":  alert,
 	})
+}
+
+// handleListIndicators 获取支持的技术指标列表
+func (s *Server) handleListIndicators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 返回支持的指标列表和参数说明
+	indicators := []map[string]interface{}{
+		{
+			"name":        "MACD",
+			"description": "移动平均收敛发散指标",
+			"default_params": map[string]interface{}{
+				"fast_period":   12,
+				"slow_period":   26,
+				"signal_period": 9,
+			},
+		},
+		{
+			"name":        "RSI",
+			"description": "相对强弱指数",
+			"default_params": map[string]interface{}{
+				"period": 14,
+			},
+		},
+		{
+			"name":        "BOLLINGER",
+			"description": "布林带指标",
+			"default_params": map[string]interface{}{
+				"period":  20,
+				"std_dev": 2.0,
+			},
+		},
+		{
+			"name":        "ATR",
+			"description": "平均真实波动范围",
+			"default_params": map[string]interface{}{
+				"period": 14,
+			},
+		},
+		{
+			"name":        "ADX",
+			"description": "平均趋向指数",
+			"default_params": map[string]interface{}{
+				"period": 14,
+			},
+		},
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"indicators": indicators,
+	})
+}
+
+// handleCalculateIndicators 计算技术指标
+func (s *Server) handleCalculateIndicators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.actions == nil || s.actions.GetBars == nil {
+		http.Error(w, "Market data service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req calculateIndicatorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Symbol == "" {
+		http.Error(w, "symbol is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Interval == "" {
+		req.Interval = "1m"
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 200 // 默认获取200根K线足够计算大多数指标
+	}
+
+	// 最少需要的K线数量
+	minLimit := 100
+	if limit < minLimit {
+		limit = minLimit
+	}
+
+	// 获取K线数据
+	bars, err := s.actions.GetBars(req.Symbol, req.Interval, limit)
+	if err != nil {
+		logger.Error("获取K线数据失败",
+			zap.String("symbol", req.Symbol),
+			zap.String("interval", req.Interval),
+			zap.Error(err),
+		)
+		http.Error(w, fmt.Sprintf("获取K线数据失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(bars) < minLimit {
+		http.Error(w, fmt.Sprintf("K线数据不足，需要至少%d根，当前只有%d根", minLimit, len(bars)), http.StatusBadRequest)
+		return
+	}
+
+	// 创建指标集
+	is := indicator.NewIndicatorSet()
+
+	// 注册需要计算的指标
+	for _, indConfig := range req.Indicators {
+		var ind indicator.Indicator
+
+		switch strings.ToUpper(indConfig.Name) {
+		case "MACD":
+			fastPeriod := 12
+			slowPeriod := 26
+			signalPeriod := 9
+
+			if indConfig.Params != nil {
+				if v, ok := indConfig.Params["fast_period"].(float64); ok && v > 0 {
+					fastPeriod = int(v)
+				}
+				if v, ok := indConfig.Params["slow_period"].(float64); ok && v > 0 {
+					slowPeriod = int(v)
+				}
+				if v, ok := indConfig.Params["signal_period"].(float64); ok && v > 0 {
+					signalPeriod = int(v)
+				}
+			}
+
+			ind = indicator.NewMACD(fastPeriod, slowPeriod, signalPeriod)
+
+		case "RSI":
+			period := 14
+			if indConfig.Params != nil {
+				if v, ok := indConfig.Params["period"].(float64); ok && v > 0 {
+					period = int(v)
+				}
+			}
+			ind = indicator.NewRSI(period)
+
+		case "BOLLINGER", "BB":
+			period := 20
+			stdDev := 2.0
+			if indConfig.Params != nil {
+				if v, ok := indConfig.Params["period"].(float64); ok && v > 0 {
+					period = int(v)
+				}
+				if v, ok := indConfig.Params["std_dev"].(float64); ok && v > 0 {
+					stdDev = v
+				}
+			}
+			ind = indicator.NewBollinger(period, stdDev)
+
+		case "ATR":
+			period := 14
+			if indConfig.Params != nil {
+				if v, ok := indConfig.Params["period"].(float64); ok && v > 0 {
+					period = int(v)
+				}
+			}
+			ind = indicator.NewATR(period)
+
+		case "ADX":
+			period := 14
+			if indConfig.Params != nil {
+				if v, ok := indConfig.Params["period"].(float64); ok && v > 0 {
+					period = int(v)
+				}
+			}
+			ind = indicator.NewADX(period)
+
+		default:
+			http.Error(w, fmt.Sprintf("不支持的指标类型: %s", indConfig.Name), http.StatusBadRequest)
+			return
+		}
+
+		is.AddIndicator(indConfig.Name, ind)
+	}
+
+	// 计算指标
+	results, err := is.CalculateAll(bars)
+	if err != nil {
+		logger.Error("计算指标失败", zap.Error(err))
+		http.Error(w, fmt.Sprintf("计算指标失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 转换结果格式
+	response := make(map[string]interface{})
+	response["symbol"] = req.Symbol
+	response["interval"] = req.Interval
+	response["bar_count"] = len(bars)
+	response["latest_bar_time"] = bars[len(bars)-1].Timestamp
+	response["indicators"] = results
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// handleGetHistoryData 获取历史K线数据
+func (s *Server) handleGetHistoryData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		symbol = "BTC-USDT"
+	}
+
+	interval := r.URL.Query().Get("interval")
+	if interval == "" {
+		interval = "1m"
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 100
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	if s.actions != nil && s.actions.GetBars != nil {
+		bars, err := s.actions.GetBars(symbol, interval, limit)
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"symbol":    symbol,
+				"interval":  interval,
+				"bar_count": len(bars),
+				"bars":      bars,
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol":    symbol,
+		"interval":  interval,
+		"bar_count": 0,
+		"bars":      []interface{}{},
+		"message":   "历史数据功能开发中",
+	})
+}
+
+// handleGetTickData 获取历史行情数据
+func (s *Server) handleGetTickData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		symbol = "BTC-USDT"
+	}
+
+	if s.actions != nil && s.actions.GetTicker != nil {
+		ticker, err := s.actions.GetTicker(symbol)
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"symbol":  symbol,
+				"ticker":  ticker,
+				"message": "实时行情数据",
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol":  symbol,
+		"ticker":  nil,
+		"message": "历史行情数据功能开发中",
+	})
+}
+
+// 回测API相关结构
+type backtestStartRequest struct {
+	StrategyName   string                 `json:"strategy_name"`
+	StrategyParams map[string]interface{} `json:"strategy_params,omitempty"`
+	Symbol         string                 `json:"symbol"`
+	Interval       string                 `json:"interval"`
+	Limit          int                    `json:"limit,omitempty"`
+	InitialBalance float64                `json:"initial_balance,omitempty"`
+}
+
+type backtestTask struct {
+	ID         string
+	Status     string
+	Strategy   string
+	Result     *backtest.Result
+	Report     *backtest.Report
+	CreatedAt  time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
+	Error      string
+}
+
+var (
+	backtestTasks       = make(map[string]*backtestTask)
+	backtestTasksMutex  sync.RWMutex
+	backtestTaskCounter int64
+)
+
+// handleBacktestStrategies 获取可用的回测策略列表
+func (s *Server) handleBacktestStrategies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	strategies := []map[string]interface{}{
+		{
+			"name":        "TrendFollowing",
+			"description": "趋势跟随策略",
+			"default_params": map[string]interface{}{
+				"ema_short_period":      12,
+				"ema_long_period":       26,
+				"adx_period":            14,
+				"adx_threshold":         25.0,
+				"stop_loss_percent":     0.05,
+				"trailing_stop_percent": 0.03,
+			},
+		},
+		{
+			"name":        "MeanReversion",
+			"description": "均值回归策略",
+			"default_params": map[string]interface{}{
+				"lookback_period": 20,
+				"entry_threshold": 2.0,
+				"exit_threshold":  0.5,
+			},
+		},
+		{
+			"name":        "VolatilityBreakout",
+			"description": "波动率突破策略",
+			"default_params": map[string]interface{}{
+				"lookback_period": 20,
+				"multiplier":      2.0,
+			},
+		},
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"strategies": strategies,
+	})
+}
+
+// handleBacktestStart 启动回测
+func (s *Server) handleBacktestStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := s.requireMutationAccess(r); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	var req backtestStartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.StrategyName == "" {
+		http.Error(w, "strategy_name is required", http.StatusBadRequest)
+		return
+	}
+	if req.Symbol == "" {
+		http.Error(w, "symbol is required", http.StatusBadRequest)
+		return
+	}
+	if req.Interval == "" {
+		req.Interval = "1m"
+	}
+	if req.InitialBalance <= 0 {
+		req.InitialBalance = 10000
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+
+	taskID := fmt.Sprintf("backtest_%d", time.Now().UnixNano())
+	task := &backtestTask{
+		ID:        taskID,
+		Status:    "pending",
+		Strategy:  req.StrategyName,
+		CreatedAt: time.Now(),
+	}
+
+	backtestTasksMutex.Lock()
+	backtestTasks[taskID] = task
+	backtestTasksMutex.Unlock()
+
+	go func() {
+		startedAt := time.Now()
+		task.Status = "running"
+		task.StartedAt = &startedAt
+
+		defer func() {
+			finishedAt := time.Now()
+			task.FinishedAt = &finishedAt
+		}()
+
+		if s.actions == nil || s.actions.GetBars == nil {
+			task.Status = "failed"
+			task.Error = "Market data service not available"
+			return
+		}
+
+		bars, err := s.actions.GetBars(req.Symbol, req.Interval, limit)
+		if err != nil {
+			task.Status = "failed"
+			task.Error = fmt.Sprintf("获取K线数据失败: %v", err)
+			return
+		}
+
+		var strat backtest.Strategy
+		switch req.StrategyName {
+		case "TrendFollowing":
+			trendStrat := strategy.NewTrendFollowingStrategy()
+			if req.StrategyParams != nil {
+				if err := trendStrat.Init(req.StrategyParams); err != nil {
+					task.Status = "failed"
+					task.Error = fmt.Sprintf("初始化策略失败: %v", err)
+					return
+				}
+			}
+			strat = backtest.NewStrategyAdapter(trendStrat)
+		default:
+			task.Status = "failed"
+			task.Error = fmt.Sprintf("不支持的策略: %s", req.StrategyName)
+			return
+		}
+
+		if req.StrategyParams != nil {
+			if err := strat.Init(req.StrategyParams); err != nil {
+				task.Status = "failed"
+				task.Error = fmt.Sprintf("初始化策略失败: %v", err)
+				return
+			}
+		}
+
+		engine := backtest.NewEngine(strat, req.InitialBalance)
+		if err := engine.AddData(req.Symbol, bars); err != nil {
+			task.Status = "failed"
+			task.Error = fmt.Sprintf("添加数据失败: %v", err)
+			return
+		}
+
+		if err := engine.Run(); err != nil {
+			task.Status = "failed"
+			task.Error = fmt.Sprintf("回测执行失败: %v", err)
+			return
+		}
+
+		task.Result = engine.GetResult()
+		reportGen := backtest.NewReportGenerator(task.Result)
+		task.Report = reportGen.Generate(req.StrategyName)
+		task.Status = "completed"
+	}()
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"task_id": taskID,
+		"status":  "started",
+		"message": "回测已启动",
+	})
+}
+
+// handleBacktestGetResults 获取回测结果
+func (s *Server) handleBacktestGetResults(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	taskID := strings.TrimPrefix(r.URL.Path, "/api/backtest/results/")
+	if taskID == "" {
+		http.Error(w, "task_id is required", http.StatusBadRequest)
+		return
+	}
+
+	backtestTasksMutex.RLock()
+	task, exists := backtestTasks[taskID]
+	backtestTasksMutex.RUnlock()
+
+	if !exists {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"task_id":    task.ID,
+		"status":     task.Status,
+		"strategy":   task.Strategy,
+		"created_at": task.CreatedAt,
+	}
+
+	if task.StartedAt != nil {
+		response["started_at"] = task.StartedAt
+	}
+	if task.FinishedAt != nil {
+		response["finished_at"] = task.FinishedAt
+	}
+	if task.Error != "" {
+		response["error"] = task.Error
+	}
+	if task.Result != nil {
+		response["result"] = task.Result
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// handleBacktestGetReport 获取回测报告
+func (s *Server) handleBacktestGetReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	taskID := strings.TrimPrefix(r.URL.Path, "/api/backtest/report/")
+	if taskID == "" {
+		http.Error(w, "task_id is required", http.StatusBadRequest)
+		return
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	backtestTasksMutex.RLock()
+	task, exists := backtestTasks[taskID]
+	backtestTasksMutex.RUnlock()
+
+	if !exists {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	if task.Status != "completed" {
+		http.Error(w, "回测尚未完成", http.StatusBadRequest)
+		return
+	}
+
+	if task.Report == nil {
+		http.Error(w, "报告尚未生成", http.StatusInternalServerError)
+		return
+	}
+
+	if format == "text" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(task.Report.ToString()))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, task.Report)
+}
+
+// SetMetrics 设置指标管理器
+func (s *Server) SetMetrics(metrics *monitoring.Metrics) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.metrics = metrics
+}
+
+// SetStrategyEngine 设置策略引擎
+func (s *Server) SetStrategyEngine(engine *strategy.Engine) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.strategyEngine = engine
+}
+
+// handleStrategyParams 处理策略参数请求
+func (s *Server) handleStrategyParams(w http.ResponseWriter, r *http.Request) {
+	strategyName := strings.TrimPrefix(r.URL.Path, "/api/strategy/params/")
+
+	switch r.Method {
+	case http.MethodGet:
+		s.getStrategyParams(w, r, strategyName)
+	case http.MethodPut, http.MethodPost:
+		s.setStrategyParams(w, r, strategyName)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// getStrategyParams 获取策略参数
+func (s *Server) getStrategyParams(w http.ResponseWriter, r *http.Request, strategyName string) {
+	s.mutex.RLock()
+	engine := s.strategyEngine
+	s.mutex.RUnlock()
+
+	if engine == nil {
+		http.Error(w, "Strategy engine not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	if strategyName == "" {
+		configs := engine.GetAllStrategyConfigs()
+		result := make([]map[string]interface{}, 0, len(configs))
+		for name, config := range configs {
+			paramInfo := map[string]interface{}{
+				"name":    name,
+				"params":  config.Params,
+				"weight":  config.Weight,
+				"enabled": config.Enabled,
+			}
+
+			if strat := engine.GetStrategy(name); strat != nil {
+				if schema, ok := strat.(strategy.StrategyWithSchema); ok {
+					paramInfo["schema"] = schema.GetParamSchema()
+				}
+			}
+
+			result = append(result, paramInfo)
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+
+	if !engine.HasStrategy(strategyName) {
+		http.Error(w, "Strategy not found", http.StatusNotFound)
+		return
+	}
+
+	params := engine.GetStrategyParams(strategyName)
+	config := engine.GetStrategyConfig(strategyName)
+
+	result := map[string]interface{}{
+		"name":    strategyName,
+		"params":  params,
+		"weight":  config.Weight,
+		"enabled": config.Enabled,
+	}
+
+	if strat := engine.GetStrategy(strategyName); strat != nil {
+		if schema, ok := strat.(strategy.StrategyWithSchema); ok {
+			result["schema"] = schema.GetParamSchema()
+		}
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// setStrategyParams 设置策略参数
+func (s *Server) setStrategyParams(w http.ResponseWriter, r *http.Request, strategyName string) {
+	if strategyName == "" {
+		http.Error(w, "Strategy name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.requireMutationAccess(r); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	s.mutex.RLock()
+	engine := s.strategyEngine
+	s.mutex.RUnlock()
+
+	if engine == nil {
+		http.Error(w, "Strategy engine not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	if !engine.HasStrategy(strategyName) {
+		http.Error(w, "Strategy not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Params  map[string]interface{} `json:"params"`
+		Weight  *float64               `json:"weight,omitempty"`
+		Enabled *bool                  `json:"enabled,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Params != nil {
+		if strat := engine.GetStrategy(strategyName); strat != nil {
+			if schemaStrat, ok := strat.(strategy.StrategyWithSchema); ok {
+				schema := schemaStrat.GetParamSchema()
+				validator := strategy.NewParamValidator(schema)
+				if err := validator.Validate(req.Params); err != nil {
+					http.Error(w, fmt.Sprintf("Parameter validation failed: %v", err), http.StatusBadRequest)
+					return
+				}
+				req.Params = validator.ApplyDefaults(req.Params)
+			}
+		}
+
+		if err := engine.SetStrategyParams(strategyName, req.Params); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if req.Weight != nil {
+		if err := engine.SetStrategyWeight(strategyName, *req.Weight); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if req.Enabled != nil {
+		if *req.Enabled {
+			engine.EnableStrategy(strategyName)
+		} else {
+			engine.DisableStrategy(strategyName)
+		}
+	}
+
+	logger.Info("策略参数已更新",
+		zap.String("strategy", strategyName),
+	)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "success",
+		"message": "Strategy parameters updated",
+	})
+}
+
+func (s *Server) handleGetMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if s.metrics == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"error": "metrics not initialized",
+		})
+		return
+	}
+
+	if s.metrics.GetSystemMetrics() != nil {
+		s.metrics.GetSystemMetrics().Update()
+	}
+
+	writeJSON(w, http.StatusOK, s.metrics.GetAllMetrics())
+}
+
+func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if s.metrics == nil {
+		http.Error(w, "metrics not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	if s.metrics.GetSystemMetrics() != nil {
+		s.metrics.GetSystemMetrics().Update()
+	}
+
+	allMetrics := s.metrics.GetAllMetrics()
+
+	w.Write([]byte("# HELP quant_system_cpu_percent CPU usage percentage\n"))
+	w.Write([]byte("# TYPE quant_system_cpu_percent gauge\n"))
+	if cpu, ok := allMetrics["system"].(map[string]interface{})["cpu_percent"].(float64); ok {
+		w.Write([]byte(fmt.Sprintf("quant_system_cpu_percent %f\n", cpu)))
+	}
+
+	w.Write([]byte("# HELP quant_system_memory_percent Memory usage percentage\n"))
+	w.Write([]byte("# TYPE quant_system_memory_percent gauge\n"))
+	if mem, ok := allMetrics["system"].(map[string]interface{})["memory_percent"].(float64); ok {
+		w.Write([]byte(fmt.Sprintf("quant_system_memory_percent %f\n", mem)))
+	}
+
+	if apiStats, ok := allMetrics["api"].(map[string]interface{}); ok {
+		w.Write([]byte("# HELP quant_api_total_requests Total API requests\n"))
+		w.Write([]byte("# TYPE quant_api_total_requests counter\n"))
+		if totalRequests, ok := apiStats["total_requests"].(uint64); ok {
+			w.Write([]byte(fmt.Sprintf("quant_api_total_requests %d\n", totalRequests)))
+		}
+
+		w.Write([]byte("# HELP quant_api_total_errors Total API errors\n"))
+		w.Write([]byte("# TYPE quant_api_total_errors counter\n"))
+		if totalErrors, ok := apiStats["total_errors"].(uint64); ok {
+			w.Write([]byte(fmt.Sprintf("quant_api_total_errors %d\n", totalErrors)))
+		}
+
+		w.Write([]byte("# HELP quant_api_error_rate API error rate\n"))
+		w.Write([]byte("# TYPE quant_api_error_rate gauge\n"))
+		if errorRate, ok := apiStats["error_rate"].(float64); ok {
+			w.Write([]byte(fmt.Sprintf("quant_api_error_rate %f\n", errorRate)))
+		}
+	}
+
+	if tradeStats, ok := allMetrics["trade_stats"].(map[string]interface{}); ok {
+		w.Write([]byte("# HELP quant_trade_count Total trade count\n"))
+		w.Write([]byte("# TYPE quant_trade_count counter\n"))
+		if tradeCount, ok := tradeStats["trade_count"].(int); ok {
+			w.Write([]byte(fmt.Sprintf("quant_trade_count %d\n", tradeCount)))
+		}
+
+		w.Write([]byte("# HELP quant_total_pnl Total PnL\n"))
+		w.Write([]byte("# TYPE quant_total_pnl gauge\n"))
+		if totalPnL, ok := tradeStats["total_pnl"].(float64); ok {
+			w.Write([]byte(fmt.Sprintf("quant_total_pnl %f\n", totalPnL)))
+		}
+
+		w.Write([]byte("# HELP quant_win_rate Win rate\n"))
+		w.Write([]byte("# TYPE quant_win_rate gauge\n"))
+		if winRate, ok := tradeStats["win_rate"].(float64); ok {
+			w.Write([]byte(fmt.Sprintf("quant_win_rate %f\n", winRate)))
+		}
+	}
 }

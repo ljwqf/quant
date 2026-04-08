@@ -1,6 +1,6 @@
 # OKX 量化交易系统 - 用户手册
 
-> 版本: 1.0.0 | 最后更新: 2026-03-27
+&gt; 版本: 1.1.0 | 最后更新: 2026-04-08
 
 ---
 
@@ -42,6 +42,22 @@ make build
 
 ### 1.3 快速启动
 
+#### 方式一：使用 Go 直接运行（推荐）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/ljwqf/quant.git
+cd quant
+
+# 2. 编译项目
+go build ./...
+
+# 3. 启动模拟盘（推荐先用模拟盘测试）
+go run cmd/trader/main.go --config configs/config.sim.yaml
+```
+
+#### 方式二：使用 Makefile
+
 ```bash
 # 1. 设置环境变量
 cp scripts/setup-env.sh scripts/setup-env.local.sh
@@ -78,6 +94,12 @@ export CRYPTOQUANT_API_KEY="your-cryptoquant-key"
 export OPENAI_API_KEY="your-openai-key"
 export CLAUDE_API_KEY="your-claude-key"
 export QWEN_API_KEY="your-qwen-key"
+
+# 通知系统（可选）
+export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+export TELEGRAM_CHAT_ID="your-telegram-chat-id"
+export DISCORD_WEBHOOK_URL="your-discord-webhook-url"
+export EMAIL_PASSWORD="your-email-password"
 ```
 
 #### 方式二：使用配置脚本
@@ -221,6 +243,46 @@ basic:
   log_level: "debug"     # debug / info / warn / error
   log_file: "./logs/okx-quant.log"
 ```
+
+#### 通知系统配置
+
+```yaml
+notifications:
+  enabled: true
+  default_level: "info"    # debug / info / warning / error / critical
+  
+  console:
+    enabled: true
+    level: "info"
+  
+  telegram:
+    enabled: false
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    chat_id: "${TELEGRAM_CHAT_ID}"
+    level: "info"
+  
+  discord:
+    enabled: false
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+    level: "info"
+  
+  email:
+    enabled: false
+    smtp_host: "smtp.example.com"
+    smtp_port: 587
+    from: "trader@example.com"
+    to: "user@example.com"
+    username: "trader@example.com"
+    password: "${EMAIL_PASSWORD}"
+    level: "warning"
+```
+
+通知级别说明：
+- `debug` - 调试信息（详细日志）
+- `info` - 一般信息（策略信号、订单执行）
+- `warning` - 警告信息（异常情况）
+- `error` - 错误信息（交易失败）
+- `critical` - 严重信息（系统故障）
 
 #### 交易所配置
 
@@ -369,7 +431,23 @@ server:
   host: "0.0.0.0"
 ```
 
-### 7.2 主要接口
+### 7.2 Dashboard 访问
+
+系统启动后，可以通过浏览器访问 Dashboard：
+
+```
+http://127.0.0.1:8765
+```
+
+Dashboard 功能：
+- 系统状态概览
+- 实时行情数据
+- 策略信号查看
+- 持仓和订单管理
+- 技术指标可视化
+- 系统配置管理
+
+### 7.3 主要接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
@@ -381,7 +459,7 @@ server:
 | `/api/orders` | GET | 订单列表 |
 | `/api/balance` | GET | 账户余额 |
 
-### 7.3 API 认证
+### 7.4 API 认证
 
 ```yaml
 server:
@@ -395,9 +473,9 @@ X-API-Token: your-token
 
 ---
 
-## 8. 监控与告警
+## 9. 监控与告警
 
-### 8.1 监控指标
+### 9.1 监控指标
 
 - 账户余额变化
 - 持仓盈亏
@@ -405,7 +483,7 @@ X-API-Token: your-token
 - 订单执行状态
 - 系统资源使用
 
-### 8.2 告警配置
+### 9.2 告警配置
 
 ```yaml
 alert:
@@ -423,7 +501,7 @@ monitoring:
     position_limit: 15000 # 持仓告警阈值
 ```
 
-### 8.3 Webhook 告警
+### 9.3 Webhook 告警
 
 ```yaml
 monitoring:
@@ -433,9 +511,9 @@ monitoring:
 
 ---
 
-## 9. 常见问题
+## 10. 常见问题
 
-### 9.1 启动失败
+### 10.1 启动失败
 
 **问题**: `加载配置失败`
 
@@ -448,7 +526,7 @@ monitoring:
 make check-env
 ```
 
-### 9.2 API 连接失败
+### 10.2 API 连接失败
 
 **问题**: `连接交易所失败`
 
@@ -458,7 +536,7 @@ make check-env
 3. 检查 IP 白名单设置
 4. 确认 API 权限配置
 
-### 9.3 策略不执行
+### 10.3 策略不执行
 
 **问题**: 策略已启用但不产生交易
 
@@ -468,7 +546,7 @@ make check-env
 3. 检查行情数据是否正常
 4. 查看日志了解具体原因
 
-### 9.4 流动性检查失败
+### 10.4 流动性检查失败
 
 **问题**: `ErrLiquidityInsufficient`
 
@@ -483,7 +561,7 @@ execution:
     max_estimated_slippage: 0.005  # 提高到 0.5%
 ```
 
-### 9.5 如何切换交易对
+### 10.5 如何切换交易对
 
 修改配置文件：
 ```yaml

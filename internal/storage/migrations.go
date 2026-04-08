@@ -150,4 +150,44 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_alert_records_created_at ON alert_records(created_at);
 		`,
 	},
+	{
+		version: "007",
+		name:    "create_kline_data_table",
+		up: `
+			CREATE TABLE IF NOT EXISTS kline_data (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				symbol TEXT NOT NULL,
+				interval TEXT NOT NULL,
+				open DECIMAL NOT NULL,
+				high DECIMAL NOT NULL,
+				low DECIMAL NOT NULL,
+				close DECIMAL NOT NULL,
+				volume DECIMAL NOT NULL,
+				timestamp DATETIME NOT NULL,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_kline_data_symbol_interval ON kline_data(symbol, interval);
+			CREATE INDEX IF NOT EXISTS idx_kline_data_timestamp ON kline_data(timestamp);
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_kline_data_unique ON kline_data(symbol, interval, timestamp);
+		`,
+	},
+	{
+		version: "008",
+		name:    "create_tick_data_table",
+		up: `
+			CREATE TABLE IF NOT EXISTS tick_data (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				symbol TEXT NOT NULL,
+				price DECIMAL NOT NULL,
+				open_24h DECIMAL,
+				high_24h DECIMAL,
+				low_24h DECIMAL,
+				volume_24h DECIMAL,
+				timestamp DATETIME NOT NULL,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_tick_data_symbol ON tick_data(symbol);
+			CREATE INDEX IF NOT EXISTS idx_tick_data_timestamp ON tick_data(timestamp);
+		`,
+	},
 }

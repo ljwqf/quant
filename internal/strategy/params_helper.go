@@ -84,3 +84,31 @@ func requireFloat64(params map[string]interface{}, key string) (float64, error) 
 	}
 	return 0, fmt.Errorf("param %s not found", key)
 }
+
+func validateIntRange(value int, min, max int, name string) error {
+	if value < min || value > max {
+		return fmt.Errorf("%s must be between %d and %d, got %d", name, min, max, value)
+	}
+	return nil
+}
+
+func validateFloatRange(value float64, min, max float64, name string) error {
+	if value < min || value > max {
+		return fmt.Errorf("%s must be between %.4f and %.4f, got %.4f", name, min, max, value)
+	}
+	return nil
+}
+
+func validatePositiveInt(value int, name string) error {
+	if value <= 0 {
+		return fmt.Errorf("%s must be positive, got %d", name, value)
+	}
+	return nil
+}
+
+func validatePositiveFloat(value float64, name string) error {
+	if value <= 0 {
+		return fmt.Errorf("%s must be positive, got %.4f", name, value)
+	}
+	return nil
+}

@@ -31,6 +31,8 @@ type Engine struct {
 	liquidityChecker LiquidityChecker
 	maxSlippage      float64
 	orderBookDepth   int
+	// 品种风险敞口跟踪
+	symbolExposures map[string]float64
 }
 
 // EngineOption 引擎配置选项
@@ -62,11 +64,12 @@ func NewEngine(cfg *config.RiskConfig, opts ...EngineOption) *Engine {
 			"MeanReversionStrategy":      0.12,
 			"VolatilityBreakoutStrategy": 0.08,
 		},
-		metrics:       make(map[string]interface{}),
-		stopChan:      make(chan struct{}),
-		nowFunc:       time.Now,
-		maxSlippage:   0.0025, // 默认 0.25%
-		orderBookDepth: 20,    // 默认深度
+		metrics:         make(map[string]interface{}),
+		stopChan:        make(chan struct{}),
+		nowFunc:         time.Now,
+		maxSlippage:     0.0025, // 默认 0.25%
+		orderBookDepth:  20,    // 默认深度
+		symbolExposures: make(map[string]float64),
 	}
 
 	for _, opt := range opts {
@@ -102,6 +105,10 @@ func (e *Engine) CheckRisk(signal *types.Signal) error {
 		return err
 	}
 
+	if err := e.checkSymbolExposureLocked(signal); err != nil {
+		return err
+	}
+
 	if err := e.checkLiquidityLocked(signal); err != nil {
 		return err
 	}
@@ -123,10 +130,12 @@ func (e *Engine) UpdatePosition(position *types.Position) {
 
 	if position.Size == 0 {
 		delete(e.positions, position.Symbol)
+		delete(e.symbolExposures, position.Symbol)
 		return
 	}
 
 	e.positions[position.Symbol] = position
+	e.symbolExposures[position.Symbol] = absExposure(position.Size, position.MarkPrice, position.Leverage)
 }
 
 func (e *Engine) RemovePosition(symbol string) {
@@ -171,6 +180,18 @@ func (e *Engine) GetRiskMetrics() map[string]interface{} {
 		totalExposure += exposure
 	}
 	metrics["total_exposure"] = totalExposure
+
+	symbolExposures := make(map[string]float64)
+	for symbol, exposure := range e.symbolExposures {
+		symbolExposures[symbol] = exposure
+	}
+	metrics["symbol_exposures"] = symbolExposures
+
+	if e.config.SymbolExposureLimit.Enable {
+		metrics["symbol_exposure_limit_enabled"] = true
+		metrics["max_per_symbol"] = e.config.SymbolExposureLimit.MaxPerSymbol
+		metrics["max_total_exposure"] = e.config.SymbolExposureLimit.MaxTotalExposure
+	}
 
 	return metrics
 }
@@ -227,6 +248,64 @@ func (e *Engine) checkPositionLimitLocked(signal *types.Signal) error {
 
 	if currentValue+newValue > e.config.MaxPositionSize {
 		return ErrPositionLimitExceeded
+	}
+
+	return nil
+}
+
+func (e *Engine) checkSymbolExposureLocked(signal *types.Signal) error {
+	if signal == nil || signal.Type == types.SignalTypeExit {
+		return nil
+	}
+
+	if !e.config.SymbolExposureLimit.Enable {
+		return nil
+	}
+
+	signalExposure := 0.0
+	if signal.Price > 0 && signal.Quantity > 0 {
+		signalExposure = signal.Quantity * signal.Price
+	}
+
+	if signalExposure <= 0 {
+		return nil
+	}
+
+	currentExposure := e.symbolExposures[signal.Symbol]
+	newExposure := currentExposure + signalExposure
+
+	maxExposure := e.config.SymbolExposureLimit.MaxPerSymbol
+	if customLimit, exists := e.config.SymbolExposureLimit.SymbolLimits[signal.Symbol]; exists {
+		maxExposure = customLimit
+	}
+
+	if maxExposure > 0 && newExposure > maxExposure {
+		logger.Warn("品种风险敞口超限",
+			zap.String("symbol", signal.Symbol),
+			zap.Float64("current", currentExposure),
+			zap.Float64("new", signalExposure),
+			zap.Float64("total", newExposure),
+			zap.Float64("max", maxExposure),
+		)
+		return ErrSymbolExposureExceeded
+	}
+
+	if e.config.SymbolExposureLimit.MaxTotalExposure > 0 {
+		totalExposure := 0.0
+		for _, exp := range e.symbolExposures {
+			totalExposure += exp
+		}
+		newTotalExposure := totalExposure + signalExposure
+
+		if newTotalExposure > e.config.SymbolExposureLimit.MaxTotalExposure {
+			logger.Warn("总风险敞口超限",
+				zap.Float64("current", totalExposure),
+				zap.Float64("new", signalExposure),
+				zap.Float64("total", newTotalExposure),
+				zap.Float64("max", e.config.SymbolExposureLimit.MaxTotalExposure),
+			)
+			return ErrTotalExposureExceeded
+		}
 	}
 
 	return nil

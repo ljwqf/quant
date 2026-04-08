@@ -29,6 +29,8 @@ risk:
   stop_loss_percent: 0.02       # 更保守
   take_profit_percent: 0.05
   max_trades_per_day: 50        # 更保守
+  max_risk_per_trade: 0.015     # 更保守
+  max_exposure_per_symbol: 0.2  # 更保守
 
 execution:
   enable_strategy_take_profit: true

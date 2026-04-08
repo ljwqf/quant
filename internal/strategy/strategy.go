@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -59,26 +60,61 @@ type RebalancePlanStep struct {
 	RecommendedQuantity float64
 }
 
+type StrategyConfig struct {
+	Name     string                 `json:"name"`
+	Strategy Strategy               `json:"-"`
+	Params   map[string]interface{} `json:"params"`
+	Weight   float64                `json:"weight"`
+	Enabled  bool                   `json:"enabled"`
+}
+
 type Engine struct {
-	strategies map[string]Strategy
+	strategies map[string]*StrategyConfig
 	params     map[string]map[string]interface{}
 	mutex      sync.RWMutex
 }
 
 func NewEngine() *Engine {
 	return &Engine{
-		strategies: make(map[string]Strategy),
+		strategies: make(map[string]*StrategyConfig),
 		params:     make(map[string]map[string]interface{}),
 	}
 }
 
 func (e *Engine) AddStrategy(name string, strategy Strategy, params map[string]interface{}) error {
+	return e.AddStrategyWithWeight(name, strategy, params, 1.0)
+}
+
+// AddStrategyWithWeight 添加策略并指定权重
+func (e *Engine) AddStrategyWithWeight(name string, strategy Strategy, params map[string]interface{}, weight float64) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	e.strategies[name] = strategy
+	if weight < 0 {
+		return fmt.Errorf("strategy weight cannot be negative: %.4f", weight)
+	}
+
+	config := &StrategyConfig{
+		Name:     name,
+		Strategy: strategy,
+		Params:   params,
+		Weight:   weight,
+		Enabled:  true,
+	}
+
+	if err := strategy.Init(params); err != nil {
+		return err
+	}
+
+	e.strategies[name] = config
 	e.params[name] = params
-	return strategy.Init(params)
+
+	logger.Info("策略添加成功",
+		zap.String("name", name),
+		zap.String("type", strategy.Name()),
+		zap.Float64("weight", weight),
+	)
+	return nil
 }
 
 func (e *Engine) RemoveStrategy(name string) {
@@ -89,18 +125,43 @@ func (e *Engine) RemoveStrategy(name string) {
 	delete(e.params, name)
 }
 
+// GetStrategy 获取策略实例
 func (e *Engine) GetStrategy(name string) Strategy {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	if config, exists := e.strategies[name]; exists {
+		return config.Strategy
+	}
+	return nil
+}
+
+// GetStrategyConfig 获取策略配置
+func (e *Engine) GetStrategyConfig(name string) *StrategyConfig {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
 	return e.strategies[name]
 }
 
+// GetStrategies 获取所有策略实例
 func (e *Engine) GetStrategies() map[string]Strategy {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
 	result := make(map[string]Strategy)
+	for k, v := range e.strategies {
+		result[k] = v.Strategy
+	}
+	return result
+}
+
+// GetAllStrategyConfigs 获取所有策略配置
+func (e *Engine) GetAllStrategyConfigs() map[string]*StrategyConfig {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	result := make(map[string]*StrategyConfig)
 	for k, v := range e.strategies {
 		result[k] = v
 	}
@@ -121,8 +182,12 @@ func (e *Engine) OnTick(tick *types.Tick) *StrategyResult {
 		Errors:  make([]error, 0),
 	}
 
-	for name, strategy := range e.strategies {
-		signal, err := strategy.OnTick(tick)
+	for name, config := range e.strategies {
+		if !config.Enabled {
+			continue
+		}
+
+		signal, err := config.Strategy.OnTick(tick)
 		if err != nil {
 			logger.Error("策略 OnTick 失败",
 				zap.String("strategy", name),
@@ -132,6 +197,8 @@ func (e *Engine) OnTick(tick *types.Tick) *StrategyResult {
 		}
 		if signal != nil {
 			signal.Strategy = name
+			// TODO: 后续添加Weight字段到types.Signal结构
+			// signal.Weight = config.Weight
 			result.Signals = append(result.Signals, signal)
 		}
 	}
@@ -147,8 +214,12 @@ func (e *Engine) OnBar(bar *types.Bar) *StrategyResult {
 		Errors:  make([]error, 0),
 	}
 
-	for name, strategy := range e.strategies {
-		signal, err := strategy.OnBar(bar)
+	for name, config := range e.strategies {
+		if !config.Enabled {
+			continue
+		}
+
+		signal, err := config.Strategy.OnBar(bar)
 		if err != nil {
 			logger.Error("策略 OnBar 失败",
 				zap.String("strategy", name),
@@ -158,6 +229,8 @@ func (e *Engine) OnBar(bar *types.Bar) *StrategyResult {
 		}
 		if signal != nil {
 			signal.Strategy = name
+			// TODO: 后续添加Weight字段到types.Signal结构
+			// signal.Weight = config.Weight
 			result.Signals = append(result.Signals, signal)
 		}
 	}
@@ -173,8 +246,12 @@ func (e *Engine) OnOrderBook(orderBook *types.OrderBook) *StrategyResult {
 		Errors:  make([]error, 0),
 	}
 
-	for name, strategy := range e.strategies {
-		signal, err := strategy.OnOrderBook(orderBook)
+	for name, config := range e.strategies {
+		if !config.Enabled {
+			continue
+		}
+
+		signal, err := config.Strategy.OnOrderBook(orderBook)
 		if err != nil {
 			logger.Error("策略 OnOrderBook 失败",
 				zap.String("strategy", name),
@@ -184,6 +261,8 @@ func (e *Engine) OnOrderBook(orderBook *types.OrderBook) *StrategyResult {
 		}
 		if signal != nil {
 			signal.Strategy = name
+			// TODO: 后续添加Weight字段到types.Signal结构
+			// signal.Weight = config.Weight
 			result.Signals = append(result.Signals, signal)
 		}
 	}
@@ -225,25 +304,25 @@ func (e *Engine) SetStrategyParams(name string, params map[string]interface{}) e
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	strategy, exists := e.strategies[name]
+	config, exists := e.strategies[name]
 	if !exists {
-		return nil
+		return fmt.Errorf("strategy not found: %s", name)
 	}
 
-	strategy.SetParams(params)
+	config.Strategy.SetParams(params)
 	e.params[name] = params
-	return strategy.Init(params)
+	return config.Strategy.Init(params)
 }
 
 func (e *Engine) GetStrategyMetrics(name string) map[string]interface{} {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
-	strategy, exists := e.strategies[name]
+	config, exists := e.strategies[name]
 	if !exists {
 		return nil
 	}
-	return strategy.GetMetrics()
+	return config.Strategy.GetMetrics()
 }
 
 func (e *Engine) GetAllStrategyMetrics() map[string]map[string]interface{} {
@@ -251,8 +330,8 @@ func (e *Engine) GetAllStrategyMetrics() map[string]map[string]interface{} {
 	defer e.mutex.RUnlock()
 
 	metrics := make(map[string]map[string]interface{})
-	for name, strategy := range e.strategies {
-		metrics[name] = strategy.GetMetrics()
+	for name, config := range e.strategies {
+		metrics[name] = config.Strategy.GetMetrics()
 	}
 	return metrics
 }
@@ -285,47 +364,119 @@ func (e *Engine) GetStrategyNames() []string {
 
 func (e *Engine) NotifyPositionFilled(name, symbol string, side types.OrderSide, entryPrice, size float64) {
 	e.mutex.RLock()
-	strategy, exists := e.strategies[name]
+	config, exists := e.strategies[name]
 	e.mutex.RUnlock()
 
-	if !exists {
+	if !exists || !config.Enabled {
 		return
 	}
-	strategy.OnPositionFilled(symbol, side, entryPrice, size)
+	config.Strategy.OnPositionFilled(symbol, side, entryPrice, size)
 }
 
 func (e *Engine) NotifyPositionClosed(name, symbol string, exitPrice, pnl float64) {
 	e.mutex.RLock()
-	strategy, exists := e.strategies[name]
+	config, exists := e.strategies[name]
 	e.mutex.RUnlock()
 
-	if !exists {
+	if !exists || !config.Enabled {
 		return
 	}
-	strategy.OnPositionClosed(symbol, exitPrice, pnl)
+	config.Strategy.OnPositionClosed(symbol, exitPrice, pnl)
 }
 
 func (e *Engine) NotifyPositionReduced(name, symbol string, exitPrice, pnl, remainingSize float64) {
 	e.mutex.RLock()
-	strategy, exists := e.strategies[name]
+	config, exists := e.strategies[name]
 	e.mutex.RUnlock()
 
-	if !exists {
+	if !exists || !config.Enabled {
 		return
 	}
-	strategy.OnPositionReduced(symbol, exitPrice, pnl, remainingSize)
+	config.Strategy.OnPositionReduced(symbol, exitPrice, pnl, remainingSize)
+}
+
+// EnableStrategy 启用策略
+func (e *Engine) EnableStrategy(name string) error {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	config, exists := e.strategies[name]
+	if !exists {
+		return fmt.Errorf("strategy not found: %s", name)
+	}
+
+	if !config.Enabled {
+		config.Enabled = true
+		logger.Info("策略已启用", zap.String("name", name))
+	}
+	return nil
+}
+
+// DisableStrategy 禁用策略
+func (e *Engine) DisableStrategy(name string) error {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	config, exists := e.strategies[name]
+	if !exists {
+		return fmt.Errorf("strategy not found: %s", name)
+	}
+
+	if config.Enabled {
+		config.Enabled = false
+		logger.Info("策略已禁用", zap.String("name", name))
+	}
+	return nil
+}
+
+// SetStrategyWeight 设置策略权重
+func (e *Engine) SetStrategyWeight(name string, weight float64) error {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	if weight < 0 {
+		return fmt.Errorf("strategy weight cannot be negative: %.4f", weight)
+	}
+
+	config, exists := e.strategies[name]
+	if !exists {
+		return fmt.Errorf("strategy not found: %s", name)
+	}
+
+	oldWeight := config.Weight
+	config.Weight = weight
+	logger.Info("策略权重已更新",
+		zap.String("name", name),
+		zap.Float64("old_weight", oldWeight),
+		zap.Float64("new_weight", weight),
+	)
+	return nil
+}
+
+// GetTotalWeight 获取所有启用策略的总权重
+func (e *Engine) GetTotalWeight() float64 {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	total := 0.0
+	for _, config := range e.strategies {
+		if config.Enabled {
+			total += config.Weight
+		}
+	}
+	return total
 }
 
 func (e *Engine) ConfirmRebalanceEntry(name string, request *RebalanceRequest) (*RebalanceDecision, error) {
 	e.mutex.RLock()
-	strategy, exists := e.strategies[name]
+	config, exists := e.strategies[name]
 	e.mutex.RUnlock()
 
-	if !exists {
+	if !exists || !config.Enabled {
 		return nil, nil
 	}
 
-	decision, err := strategy.ConfirmRebalanceEntry(request)
+	decision, err := config.Strategy.ConfirmRebalanceEntry(request)
 	if decision != nil && decision.Signal != nil {
 		decision.Signal.Strategy = name
 	}

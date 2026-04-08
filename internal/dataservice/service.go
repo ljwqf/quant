@@ -19,6 +19,8 @@ type DataService struct {
 	cryptoquant     *cryptoquant.Client
 	newsRepo        repository.NewsEventRepository
 	economicRepo    repository.EconomicEventRepository
+	sourceManager   *SourceManager
+	dataQueue       DataQueue
 	running         bool
 	stopCh          chan struct{}
 	wg              sync.WaitGroup
@@ -33,14 +35,51 @@ func NewDataService(cfg *config.Config, db *storage.Database) *DataService {
 		logger.Info("CryptoQuant 客户端初始化成功")
 	}
 
-	return &DataService{
-		cfg:          cfg,
-		db:           db,
-		cryptoquant:  cqClient,
-		newsRepo:     repository.NewNewsEventRepository(db.DB()),
-		economicRepo: repository.NewEconomicEventRepository(db.DB()),
-		stopCh:       make(chan struct{}),
+	service := &DataService{
+		cfg:           cfg,
+		db:            db,
+		cryptoquant:   cqClient,
+		newsRepo:      repository.NewNewsEventRepository(db.DB()),
+		economicRepo:  repository.NewEconomicEventRepository(db.DB()),
+		sourceManager: NewSourceManager(),
+		dataQueue:     NewMemoryQueue(1000),
+		stopCh:        make(chan struct{}),
 	}
+
+	service.initDefaultSources()
+	return service
+}
+
+// initDefaultSources 初始化默认数据源
+func (s *DataService) initDefaultSources() {
+	if s.cfg.Exchange.OKX.APIKey != "" {
+		okxSource := NewOKXSource()
+		config := map[string]interface{}{
+			"api_key":    s.cfg.Exchange.OKX.APIKey,
+			"secret_key": s.cfg.Exchange.OKX.SecretKey,
+			"passphrase": s.cfg.Exchange.OKX.Passphrase,
+			"simulated":  s.cfg.Exchange.OKX.Simulated,
+		}
+		if err := okxSource.Initialize(config); err != nil {
+			logger.Warn("初始化OKX数据源失败", zap.Error(err))
+		} else {
+			if err := s.sourceManager.RegisterSource(okxSource); err != nil {
+				logger.Warn("注册OKX数据源失败", zap.Error(err))
+			}
+		}
+	} else {
+		logger.Info("OKX配置未提供，跳过OKX数据源初始化")
+	}
+}
+
+// SourceManager 获取数据源管理器
+func (s *DataService) SourceManager() *SourceManager {
+	return s.sourceManager
+}
+
+// DataQueue 获取数据队列
+func (s *DataService) DataQueue() DataQueue {
+	return s.dataQueue
 }
 
 // Start 启动数据采集服务

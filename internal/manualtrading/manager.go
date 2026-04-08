@@ -8,12 +8,13 @@ import (
 )
 
 type Manager struct {
-	cfg           *config.ManualTradingConfig
-	db            *storage.Database
-	exchange      exchange.Exchange
-	orderMgr      *OrderManager
-	posMgr        *PositionManager
-	timedOrderMgr *TimedOrderManager
+	cfg                 *config.ManualTradingConfig
+	db                  *storage.Database
+	exchange            exchange.Exchange
+	orderMgr            *OrderManager
+	posMgr              *PositionManager
+	timedOrderMgr       *TimedOrderManager
+	conditionalOrderMgr *ConditionalOrderManager
 }
 
 func NewManager(cfg *config.ManualTradingConfig, db *storage.Database, exchange exchange.Exchange) *Manager {
@@ -31,6 +32,7 @@ func NewManager(cfg *config.ManualTradingConfig, db *storage.Database, exchange 
 	m.orderMgr = NewOrderManager(cfg, db, exchange)
 	m.posMgr = NewPositionManager(cfg, db, exchange)
 	m.timedOrderMgr = NewTimedOrderManager(cfg, db, exchange)
+	m.conditionalOrderMgr = NewConditionalOrderManager(cfg, db, exchange)
 
 	logger.Info("手动交易管理器初始化成功")
 	return m
@@ -43,6 +45,9 @@ func (m *Manager) Start() {
 	if m.posMgr != nil {
 		m.posMgr.Start()
 	}
+	if m.conditionalOrderMgr != nil {
+		m.conditionalOrderMgr.Start()
+	}
 }
 
 func (m *Manager) Stop() {
@@ -51,6 +56,9 @@ func (m *Manager) Stop() {
 	}
 	if m.posMgr != nil {
 		m.posMgr.Stop()
+	}
+	if m.conditionalOrderMgr != nil {
+		m.conditionalOrderMgr.Stop()
 	}
 }
 
@@ -64,4 +72,8 @@ func (m *Manager) PositionManager() *PositionManager {
 
 func (m *Manager) TimedOrderManager() *TimedOrderManager {
 	return m.timedOrderMgr
+}
+
+func (m *Manager) ConditionalOrderManager() *ConditionalOrderManager {
+	return m.conditionalOrderMgr
 }

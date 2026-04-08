@@ -25,6 +25,7 @@ type Config struct {
 	DataCollector DataCollectorConfig `mapstructure:"data_collector"`
 	Alert         AlertServiceConfig  `mapstructure:"alert"`
 	DataService   DataServiceConfig   `mapstructure:"data_service"`
+	Notifications NotificationsConfig `mapstructure:"notifications"`
 }
 
 // DatabaseConfig 数据库配置
@@ -43,10 +44,10 @@ type ManualTradingConfig struct {
 
 // LLMConfig 大模型配置
 type LLMConfig struct {
-	Enable    bool              `mapstructure:"enable"`
-	Provider  string            `mapstructure:"provider"`
+	Enable    bool               `mapstructure:"enable"`
+	Provider  string             `mapstructure:"provider"`
 	Providers LLMProvidersConfig `mapstructure:"providers"`
-	Timeout   time.Duration     `mapstructure:"timeout"`
+	Timeout   time.Duration      `mapstructure:"timeout"`
 }
 
 // LLMProvidersConfig 各LLM提供商配置
@@ -58,11 +59,11 @@ type LLMProvidersConfig struct {
 
 // LLMProviderConfig 单个LLM提供商配置
 type LLMProviderConfig struct {
-	APIKey      string        `mapstructure:"api_key"`
-	BaseURL     string        `mapstructure:"base_url"`
-	Model       string        `mapstructure:"model"`
-	Temperature float64       `mapstructure:"temperature"`
-	MaxTokens   int           `mapstructure:"max_tokens"`
+	APIKey      string  `mapstructure:"api_key"`
+	BaseURL     string  `mapstructure:"base_url"`
+	Model       string  `mapstructure:"model"`
+	Temperature float64 `mapstructure:"temperature"`
+	MaxTokens   int     `mapstructure:"max_tokens"`
 }
 
 // DataCollectorConfig 数据采集配置
@@ -94,12 +95,55 @@ type AlertServiceConfig struct {
 
 // DataServiceConfig 数据采集服务配置
 type DataServiceConfig struct {
-	Enable             bool          `mapstructure:"enable"`
-	NewsEnable         bool          `mapstructure:"news_enable"`
-	EconomicEnable     bool          `mapstructure:"economic_enable"`
-	CryptoQuantEnable  bool          `mapstructure:"cryptoquant_enable"`
-	CryptoQuantAPIKey  string        `mapstructure:"cryptoquant_api_key"`
-	Interval           time.Duration `mapstructure:"interval"`
+	Enable            bool          `mapstructure:"enable"`
+	NewsEnable        bool          `mapstructure:"news_enable"`
+	EconomicEnable    bool          `mapstructure:"economic_enable"`
+	CryptoQuantEnable bool          `mapstructure:"cryptoquant_enable"`
+	CryptoQuantAPIKey string        `mapstructure:"cryptoquant_api_key"`
+	Interval          time.Duration `mapstructure:"interval"`
+}
+
+// NotificationsConfig 通知系统配置
+type NotificationsConfig struct {
+	Enabled      bool           `mapstructure:"enabled"`
+	DefaultLevel string         `mapstructure:"default_level"`
+	Console      ConsoleConfig  `mapstructure:"console"`
+	Telegram     TelegramConfig `mapstructure:"telegram"`
+	Discord      DiscordConfig  `mapstructure:"discord"`
+	Email        EmailConfig    `mapstructure:"email"`
+}
+
+// ConsoleConfig 控制台通知配置
+type ConsoleConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Level   string `mapstructure:"level"`
+}
+
+// TelegramConfig Telegram通知配置
+type TelegramConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	BotToken string `mapstructure:"bot_token"`
+	ChatID   string `mapstructure:"chat_id"`
+	Level    string `mapstructure:"level"`
+}
+
+// DiscordConfig Discord通知配置
+type DiscordConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	WebhookURL string `mapstructure:"webhook_url"`
+	Level      string `mapstructure:"level"`
+}
+
+// EmailConfig Email通知配置
+type EmailConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	SMTPHost string `mapstructure:"smtp_host"`
+	SMTPPort int    `mapstructure:"smtp_port"`
+	From     string `mapstructure:"from"`
+	To       string `mapstructure:"to"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	Level    string `mapstructure:"level"`
 }
 
 // BasicConfig 基本配置
@@ -127,15 +171,26 @@ type OKXConfig struct {
 	Simulated  bool          `mapstructure:"simulated"` // 是否使用模拟盘
 }
 
+// SymbolExposureLimit 品种风险敞口限制配置
+type SymbolExposureLimit struct {
+	Enable           bool               `mapstructure:"enable"`
+	MaxPerSymbol     float64            `mapstructure:"max_per_symbol"`
+	MaxTotalExposure float64            `mapstructure:"max_total_exposure"`
+	SymbolLimits     map[string]float64 `mapstructure:"symbol_limits"`
+}
+
 // RiskConfig 风险管理配置
 type RiskConfig struct {
-	Enable            bool    `mapstructure:"enable"`
-	MaxPositionSize   float64 `mapstructure:"max_position_size"`
-	MaxDailyLoss      float64 `mapstructure:"max_daily_loss"`
-	MaxDrawdown       float64 `mapstructure:"max_drawdown"`
-	StopLossPercent   float64 `mapstructure:"stop_loss_percent"`
-	TakeProfitPercent float64 `mapstructure:"take_profit_percent"`
-	MaxTradesPerDay   int     `mapstructure:"max_trades_per_day"`
+	Enable               bool                `mapstructure:"enable"`
+	MaxPositionSize      float64             `mapstructure:"max_position_size"`
+	MaxDailyLoss         float64             `mapstructure:"max_daily_loss"`
+	MaxDrawdown          float64             `mapstructure:"max_drawdown"`
+	StopLossPercent      float64             `mapstructure:"stop_loss_percent"`
+	TakeProfitPercent    float64             `mapstructure:"take_profit_percent"`
+	MaxTradesPerDay      int                 `mapstructure:"max_trades_per_day"`
+	MaxRiskPerTrade      float64             `mapstructure:"max_risk_per_trade"`
+	MaxExposurePerSymbol float64             `mapstructure:"max_exposure_per_symbol"`
+	SymbolExposureLimit  SymbolExposureLimit `mapstructure:"symbol_exposure_limit"`
 }
 
 // ExecutionConfig 执行引擎配置
@@ -223,29 +278,29 @@ type AlertConfig struct {
 
 // StrategyConfig 策略配置
 type StrategyConfig struct {
-	Enable              bool                          `mapstructure:"enable"`
-	Name                string                        `mapstructure:"name"`
-	Params              map[string]interface{}        `mapstructure:"params"`
-	DefaultSymbol       string                        `mapstructure:"default_symbol"`
-	DefaultBarInterval  string                        `mapstructure:"default_bar_interval"`
-	DeltaNeutral        DeltaNeutralStrategyConfig    `mapstructure:"delta_neutral"`
-	SmartFilter         SmartFilterConfig             `mapstructure:"smart_filter"`
-	TrendFollowing      TrendFollowingStrategyConfig  `mapstructure:"trend_following"`
-	MeanReversion       MeanReversionStrategyConfig   `mapstructure:"mean_reversion"`
-	VolatilityBreakout  VolatilityBreakoutStrategyConfig `mapstructure:"volatility_breakout"`
+	Enable             bool                             `mapstructure:"enable"`
+	Name               string                           `mapstructure:"name"`
+	Params             map[string]interface{}           `mapstructure:"params"`
+	DefaultSymbol      string                           `mapstructure:"default_symbol"`
+	DefaultBarInterval string                           `mapstructure:"default_bar_interval"`
+	DeltaNeutral       DeltaNeutralStrategyConfig       `mapstructure:"delta_neutral"`
+	SmartFilter        SmartFilterConfig                `mapstructure:"smart_filter"`
+	TrendFollowing     TrendFollowingStrategyConfig     `mapstructure:"trend_following"`
+	MeanReversion      MeanReversionStrategyConfig      `mapstructure:"mean_reversion"`
+	VolatilityBreakout VolatilityBreakoutStrategyConfig `mapstructure:"volatility_breakout"`
 }
 
 // SmartFilterConfig SmartFilter配置
 type SmartFilterConfig struct {
-	Source      string              `mapstructure:"source"`
-	CryptoQuant CryptoQuantConfig   `mapstructure:"cryptoquant"`
+	Source      string            `mapstructure:"source"`
+	CryptoQuant CryptoQuantConfig `mapstructure:"cryptoquant"`
 }
 
 // CryptoQuantConfig CryptoQuant配置
 type CryptoQuantConfig struct {
-	APIKey  string   `mapstructure:"api_key"`
-	Asset   string   `mapstructure:"asset"`
-	Assets  []string `mapstructure:"assets"`
+	APIKey string   `mapstructure:"api_key"`
+	Asset  string   `mapstructure:"asset"`
+	Assets []string `mapstructure:"assets"`
 }
 
 type DeltaNeutralStrategyConfig struct {
@@ -262,27 +317,27 @@ type DeltaNeutralStrategyConfig struct {
 
 // TrendFollowingStrategyConfig 趋势跟踪策略配置
 type TrendFollowingStrategyConfig struct {
-	EMAShortPeriod     int     `mapstructure:"ema_short_period"`
-	EMALongPeriod      int     `mapstructure:"ema_long_period"`
-	ADXPeriod          int     `mapstructure:"adx_period"`
-	ADXThreshold       float64 `mapstructure:"adx_threshold"`
-	TrendStrength      float64 `mapstructure:"trend_strength"`
-	StopLossPercent    float64 `mapstructure:"stop_loss_percent"`
+	EMAShortPeriod      int     `mapstructure:"ema_short_period"`
+	EMALongPeriod       int     `mapstructure:"ema_long_period"`
+	ADXPeriod           int     `mapstructure:"adx_period"`
+	ADXThreshold        float64 `mapstructure:"adx_threshold"`
+	TrendStrength       float64 `mapstructure:"trend_strength"`
+	StopLossPercent     float64 `mapstructure:"stop_loss_percent"`
 	TrailingStopPercent float64 `mapstructure:"trailing_stop_percent"`
-	SignalCooldown     int64   `mapstructure:"signal_cooldown"`
+	SignalCooldown      int64   `mapstructure:"signal_cooldown"`
 }
 
 // MeanReversionStrategyConfig 均值回归策略配置
 type MeanReversionStrategyConfig struct {
-	RSIPeriod          int     `mapstructure:"rsi_period"`
-	RSIOverbought      float64 `mapstructure:"rsi_overbought"`
-	RSIOversold        float64 `mapstructure:"rsi_oversold"`
-	BBPeriod           int     `mapstructure:"bb_period"`
-	BBStdDev           float64 `mapstructure:"bb_std_dev"`
-	Threshold          float64 `mapstructure:"threshold"`
-	StopLossPercent    float64 `mapstructure:"stop_loss_percent"`
+	RSIPeriod           int     `mapstructure:"rsi_period"`
+	RSIOverbought       float64 `mapstructure:"rsi_overbought"`
+	RSIOversold         float64 `mapstructure:"rsi_oversold"`
+	BBPeriod            int     `mapstructure:"bb_period"`
+	BBStdDev            float64 `mapstructure:"bb_std_dev"`
+	Threshold           float64 `mapstructure:"threshold"`
+	StopLossPercent     float64 `mapstructure:"stop_loss_percent"`
 	TrailingStopPercent float64 `mapstructure:"trailing_stop_percent"`
-	SignalCooldown     int64   `mapstructure:"signal_cooldown"`
+	SignalCooldown      int64   `mapstructure:"signal_cooldown"`
 }
 
 // VolatilityBreakoutStrategyConfig 波动率突破策略配置
@@ -299,12 +354,12 @@ type VolatilityBreakoutStrategyConfig struct {
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	Enable       bool              `mapstructure:"enable"`
-	Port         int               `mapstructure:"port"`
-	Host         string            `mapstructure:"host"`
-	APIToken     string            `mapstructure:"api_token"`
-	TrustedProxies []string        `mapstructure:"trusted_proxies"`
-	ForceToken   bool              `mapstructure:"force_token"`
+	Enable         bool     `mapstructure:"enable"`
+	Port           int      `mapstructure:"port"`
+	Host           string   `mapstructure:"host"`
+	APIToken       string   `mapstructure:"api_token"`
+	TrustedProxies []string `mapstructure:"trusted_proxies"`
+	ForceToken     bool     `mapstructure:"force_token"`
 }
 
 // Load 加载配置
@@ -369,6 +424,12 @@ func resolveEnvVars(config *Config) error {
 
 	// 解析SmartFilter CryptoQuant配置中的环境变量
 	config.Strategy.SmartFilter.CryptoQuant.APIKey = resolveEnvVar(config.Strategy.SmartFilter.CryptoQuant.APIKey)
+
+	// 解析通知配置中的环境变量
+	config.Notifications.Telegram.BotToken = resolveEnvVar(config.Notifications.Telegram.BotToken)
+	config.Notifications.Telegram.ChatID = resolveEnvVar(config.Notifications.Telegram.ChatID)
+	config.Notifications.Discord.WebhookURL = resolveEnvVar(config.Notifications.Discord.WebhookURL)
+	config.Notifications.Email.Password = resolveEnvVar(config.Notifications.Email.Password)
 
 	return nil
 }
@@ -454,6 +515,14 @@ func validateConfig(config *Config) error {
 		// 添加合理上限检查
 		if config.Risk.MaxTradesPerDay > 10000 {
 			return fmt.Errorf("每日最大交易次数不能超过 10000")
+		}
+
+		if config.Risk.MaxRiskPerTrade < 0 || config.Risk.MaxRiskPerTrade > 1 {
+			return fmt.Errorf("单笔交易最大风险占比必须在 0 到 1 之间")
+		}
+
+		if config.Risk.MaxExposurePerSymbol < 0 || config.Risk.MaxExposurePerSymbol > 1 {
+			return fmt.Errorf("单品种最大风险敞口占比必须在 0 到 1 之间")
 		}
 	}
 
@@ -577,6 +646,51 @@ func validateConfig(config *Config) error {
 		}
 		if config.Alert.CheckInterval < 1*time.Second {
 			return fmt.Errorf("检查间隔不能小于1秒")
+		}
+	}
+
+	// 验证通知配置
+	if config.Notifications.Enabled {
+		validLevels := []string{"debug", "info", "warning", "error", "critical"}
+		defaultLevelValid := false
+		for _, level := range validLevels {
+			if config.Notifications.DefaultLevel == level {
+				defaultLevelValid = true
+				break
+			}
+		}
+		if !defaultLevelValid && config.Notifications.DefaultLevel != "" {
+			return fmt.Errorf("默认通知级别必须是: debug, info, warning, error, critical")
+		}
+
+		if config.Notifications.Telegram.Enabled {
+			if config.Notifications.Telegram.BotToken == "" {
+				return fmt.Errorf("Telegram Bot Token 不能为空")
+			}
+			if config.Notifications.Telegram.ChatID == "" {
+				return fmt.Errorf("Telegram Chat ID 不能为空")
+			}
+		}
+
+		if config.Notifications.Discord.Enabled {
+			if config.Notifications.Discord.WebhookURL == "" {
+				return fmt.Errorf("Discord Webhook URL 不能为空")
+			}
+		}
+
+		if config.Notifications.Email.Enabled {
+			if config.Notifications.Email.SMTPHost == "" {
+				return fmt.Errorf("SMTP Host 不能为空")
+			}
+			if config.Notifications.Email.SMTPPort <= 0 || config.Notifications.Email.SMTPPort > 65535 {
+				return fmt.Errorf("SMTP Port 必须在 1 到 65535 之间")
+			}
+			if config.Notifications.Email.From == "" {
+				return fmt.Errorf("发件人邮箱不能为空")
+			}
+			if config.Notifications.Email.To == "" {
+				return fmt.Errorf("收件人邮箱不能为空")
+			}
 		}
 	}
 

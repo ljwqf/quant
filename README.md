@@ -63,20 +63,28 @@ go mod download
 
 3. 配置API密钥
 
-编辑 `configs/config.yaml` 文件，填写OKX API密钥信息：
+推荐使用环境变量，不在配置文件中写入明文密钥：
 
-```yaml
-exchange:
-  okx:
-    api_key: "your_api_key"
-    secret_key: "your_secret_key"
-    passphrase: "your_passphrase"
+```powershell
+$env:OKX_API_KEY="your_api_key"
+$env:OKX_SECRET_KEY="your_secret_key"
+$env:OKX_PASSPHRASE="your_passphrase"
 ```
+
+配置文件建议使用以下任一环境配置：
+- `configs/config.sim.yaml`（模拟盘）
+- `configs/config.prod.yaml`（实盘）
 
 4. 运行应用
 
 ```bash
-go run cmd/main.go
+go run cmd/trader/main.go -env simulation
+```
+
+实盘运行示例：
+
+```bash
+go run cmd/trader/main.go -env production
 ```
 
 ### 容器化部署

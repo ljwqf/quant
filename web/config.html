@@ -144,6 +144,7 @@
                 <button class="nav-tab" onclick="switchTab('exchange')">交易所配置</button>
                 <button class="nav-tab" onclick="switchTab('risk')">风控配置</button>
                 <button class="nav-tab" onclick="switchTab('strategy')">策略配置</button>
+                <button class="nav-tab" onclick="switchTab('notifications')">通知配置</button>
                 <button class="nav-tab" onclick="switchTab('server')">服务器配置</button>
             </div>
 
@@ -322,6 +323,170 @@
                     </div>
                 </div>
 
+                <!-- 通知配置 -->
+                <div id="tab-notifications" class="tab-content">
+                    <div class="config-section">
+                        <h3>通知全局设置</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>启用通知系统</label>
+                                <select id="notifications.enabled" name="notifications.enabled">
+                                    <option value="true">启用</option>
+                                    <option value="false">禁用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>默认通知级别</label>
+                                <select id="notifications.default_level" name="notifications.default_level">
+                                    <option value="debug">调试</option>
+                                    <option value="info" selected>信息</option>
+                                    <option value="warning">警告</option>
+                                    <option value="error">错误</option>
+                                    <option value="critical">严重</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>控制台通知</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>启用控制台通知</label>
+                                <select id="notifications.console.enabled" name="notifications.console.enabled">
+                                    <option value="true">启用</option>
+                                    <option value="false">禁用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>控制台通知级别</label>
+                                <select id="notifications.console.level" name="notifications.console.level">
+                                    <option value="debug">调试</option>
+                                    <option value="info" selected>信息</option>
+                                    <option value="warning">警告</option>
+                                    <option value="error">错误</option>
+                                    <option value="critical">严重</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>Telegram通知</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>启用Telegram通知</label>
+                                <select id="notifications.telegram.enabled" name="notifications.telegram.enabled">
+                                    <option value="true">启用</option>
+                                    <option value="false" selected>禁用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Telegram Bot Token</label>
+                                <input type="text" id="notifications.telegram.bot_token" name="notifications.telegram.bot_token" placeholder="例如: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Chat ID</label>
+                                <input type="text" id="notifications.telegram.chat_id" name="notifications.telegram.chat_id" placeholder="例如: 123456789">
+                            </div>
+                            <div class="form-group">
+                                <label>Telegram通知级别</label>
+                                <select id="notifications.telegram.level" name="notifications.telegram.level">
+                                    <option value="debug">调试</option>
+                                    <option value="info" selected>信息</option>
+                                    <option value="warning">警告</option>
+                                    <option value="error">错误</option>
+                                    <option value="critical">严重</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>Discord通知</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>启用Discord通知</label>
+                                <select id="notifications.discord.enabled" name="notifications.discord.enabled">
+                                    <option value="true">启用</option>
+                                    <option value="false" selected>禁用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Webhook URL</label>
+                                <input type="text" id="notifications.discord.webhook_url" name="notifications.discord.webhook_url" placeholder="例如: https://discord.com/api/webhooks/...">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Discord通知级别</label>
+                                <select id="notifications.discord.level" name="notifications.discord.level">
+                                    <option value="debug">调试</option>
+                                    <option value="info" selected>信息</option>
+                                    <option value="warning">警告</option>
+                                    <option value="error">错误</option>
+                                    <option value="critical">严重</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>Email通知</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>启用Email通知</label>
+                                <select id="notifications.email.enabled" name="notifications.email.enabled">
+                                    <option value="true">启用</option>
+                                    <option value="false" selected>禁用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>SMTP服务器</label>
+                                <input type="text" id="notifications.email.smtp_host" name="notifications.email.smtp_host" placeholder="例如: smtp.gmail.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>SMTP端口</label>
+                                <input type="number" id="notifications.email.smtp_port" name="notifications.email.smtp_port" placeholder="例如: 587">
+                            </div>
+                            <div class="form-group">
+                                <label>发件人邮箱</label>
+                                <input type="email" id="notifications.email.from" name="notifications.email.from" placeholder="例如: your-email@gmail.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>收件人邮箱</label>
+                                <input type="email" id="notifications.email.to" name="notifications.email.to" placeholder="例如: recipient@example.com">
+                            </div>
+                            <div class="form-group">
+                                <label>SMTP用户名</label>
+                                <input type="text" id="notifications.email.username" name="notifications.email.username" placeholder="例如: your-email@gmail.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>SMTP密码</label>
+                                <input type="password" id="notifications.email.password" name="notifications.email.password" placeholder="SMTP密码或应用专用密码">
+                            </div>
+                            <div class="form-group">
+                                <label>Email通知级别</label>
+                                <select id="notifications.email.level" name="notifications.email.level">
+                                    <option value="debug">调试</option>
+                                    <option value="info" selected>信息</option>
+                                    <option value="warning">警告</option>
+                                    <option value="error">错误</option>
+                                    <option value="critical">严重</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="btn-group">
                     <button type="submit" class="btn btn-primary">保存配置</button>
                     <button type="button" class="btn btn-secondary" onclick="loadConfig()">重置</button>
@@ -332,6 +497,28 @@
     </div>
 
     <script>
+        // 从localStorage或URL中获取API Token
+        function getStoredAPIToken() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tokenFromUrl = urlParams.get('token');
+            if (tokenFromUrl) {
+                localStorage.setItem('api_token', tokenFromUrl);
+                return tokenFromUrl;
+            }
+            return localStorage.getItem('api_token');
+        }
+
+        let apiToken = getStoredAPIToken();
+
+        // 构建认证headers
+        function buildAuthHeaders(additionalHeaders = {}) {
+            const headers = { ...additionalHeaders };
+            if (apiToken) {
+                headers['X-API-Token'] = apiToken;
+            }
+            return headers;
+        }
+
         // 切换标签页
         function switchTab(tabName) {
             document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
@@ -344,7 +531,16 @@
         // 加载配置
         async function loadConfig() {
             try {
-                const response = await fetch('/api/config');
+                const response = await fetch('/api/config', {
+                    headers: buildAuthHeaders()
+                });
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        showAlert('访问被拒绝，请检查API Token', 'error');
+                        return;
+                    }
+                    throw new Error('HTTP ' + response.status);
+                }
                 const config = await response.json();
                 
                 // 填充表单
@@ -384,6 +580,27 @@
             setFieldValue('strategy.enable', config.strategy?.enable);
             setFieldValue('strategy.name', config.strategy?.name);
             setFieldValue('strategy.params', JSON.stringify(config.strategy?.params || {}, null, 2));
+
+            // 通知配置
+            setFieldValue('notifications.enabled', config.notifications?.enabled);
+            setFieldValue('notifications.default_level', config.notifications?.default_level);
+            setFieldValue('notifications.console.enabled', config.notifications?.console?.enabled);
+            setFieldValue('notifications.console.level', config.notifications?.console?.level);
+            setFieldValue('notifications.telegram.enabled', config.notifications?.telegram?.enabled);
+            setFieldValue('notifications.telegram.bot_token', config.notifications?.telegram?.bot_token);
+            setFieldValue('notifications.telegram.chat_id', config.notifications?.telegram?.chat_id);
+            setFieldValue('notifications.telegram.level', config.notifications?.telegram?.level);
+            setFieldValue('notifications.discord.enabled', config.notifications?.discord?.enabled);
+            setFieldValue('notifications.discord.webhook_url', config.notifications?.discord?.webhook_url);
+            setFieldValue('notifications.discord.level', config.notifications?.discord?.level);
+            setFieldValue('notifications.email.enabled', config.notifications?.email?.enabled);
+            setFieldValue('notifications.email.smtp_host', config.notifications?.email?.smtp_host);
+            setFieldValue('notifications.email.smtp_port', config.notifications?.email?.smtp_port);
+            setFieldValue('notifications.email.from', config.notifications?.email?.from);
+            setFieldValue('notifications.email.to', config.notifications?.email?.to);
+            setFieldValue('notifications.email.username', config.notifications?.email?.username);
+            setFieldValue('notifications.email.password', config.notifications?.email?.password);
+            setFieldValue('notifications.email.level', config.notifications?.email?.level);
 
             // 服务器配置
             setFieldValue('server.enable', config.server?.enable);
@@ -438,6 +655,35 @@
                     name: document.getElementById('strategy.name').value,
                     params: JSON.parse(document.getElementById('strategy.params').value || '{}'),
                 },
+                notifications: {
+                    enabled: document.getElementById('notifications.enabled').value === 'true',
+                    default_level: document.getElementById('notifications.default_level').value,
+                    console: {
+                        enabled: document.getElementById('notifications.console.enabled').value === 'true',
+                        level: document.getElementById('notifications.console.level').value,
+                    },
+                    telegram: {
+                        enabled: document.getElementById('notifications.telegram.enabled').value === 'true',
+                        bot_token: document.getElementById('notifications.telegram.bot_token').value,
+                        chat_id: document.getElementById('notifications.telegram.chat_id').value,
+                        level: document.getElementById('notifications.telegram.level').value,
+                    },
+                    discord: {
+                        enabled: document.getElementById('notifications.discord.enabled').value === 'true',
+                        webhook_url: document.getElementById('notifications.discord.webhook_url').value,
+                        level: document.getElementById('notifications.discord.level').value,
+                    },
+                    email: {
+                        enabled: document.getElementById('notifications.email.enabled').value === 'true',
+                        smtp_host: document.getElementById('notifications.email.smtp_host').value,
+                        smtp_port: parseInt(document.getElementById('notifications.email.smtp_port').value) || 0,
+                        from: document.getElementById('notifications.email.from').value,
+                        to: document.getElementById('notifications.email.to').value,
+                        username: document.getElementById('notifications.email.username').value,
+                        password: document.getElementById('notifications.email.password').value,
+                        level: document.getElementById('notifications.email.level').value,
+                    },
+                },
                 server: {
                     enable: document.getElementById('server.enable').value === 'true',
                     port: parseInt(document.getElementById('server.port').value) || 8765,
@@ -448,9 +694,17 @@
             try {
                 const response = await fetch('/api/config', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(config)
                 });
+                
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        showAlert('访问被拒绝，请检查API Token', 'error');
+                        return;
+                    }
+                    throw new Error('HTTP ' + response.status);
+                }
                 
                 const result = await response.json();
                 if (result.status === 'success') {

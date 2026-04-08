@@ -1,0 +1,23 @@
+basePath: /
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+    url: http://www.github.com/ljwqf/quant
+  description: OKX量化交易系统API文档
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: OKX Quant Trading System API
+  version: 1.2.0
+paths: {}
+schemes:
+- http
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-API-Token
+    type: apiKey
+swagger: "2.0"

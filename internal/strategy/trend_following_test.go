@@ -15,7 +15,7 @@ func TestTrendFollowingLifecycleAndSignals(t *testing.T) {
 	require.NotNil(t, s)
 	assert.Equal(t, "TrendFollowingStrategy", s.Name())
 
-	err := s.Init(map[string]interface{}{"signal_cooldown": int64(0), "adx_threshold": 10.0, "trend_strength": 0.001})
+	err := s.Init(map[string]interface{}{"signal_cooldown": int64(1), "adx_threshold": 10.0, "trend_strength": 0.001})
 	require.NoError(t, err)
 
 	for i := 0; i < 40; i++ {
