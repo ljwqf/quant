@@ -17,6 +17,8 @@ type DataService struct {
 	cfg             *config.Config
 	db              *storage.Database
 	cryptoquant     *cryptoquant.Client
+	cryptoNews      *CryptoNewsClient
+	economicCalendar *EconomicCalendarClient
 	newsRepo        repository.NewsEventRepository
 	economicRepo    repository.EconomicEventRepository
 	sourceManager   *SourceManager
@@ -39,6 +41,8 @@ func NewDataService(cfg *config.Config, db *storage.Database) *DataService {
 		cfg:           cfg,
 		db:            db,
 		cryptoquant:   cqClient,
+		cryptoNews:    NewCryptoNewsClient(nil),
+		economicCalendar: NewEconomicCalendarClient(nil),
 		newsRepo:      repository.NewNewsEventRepository(db.DB()),
 		economicRepo:  repository.NewEconomicEventRepository(db.DB()),
 		sourceManager: NewSourceManager(),
@@ -183,7 +187,12 @@ func (s *DataService) collectAllData() {
 // collectNewsData 采集新闻数据
 func (s *DataService) collectNewsData() {
 	logger.Debug("采集新闻数据")
-	newsEvents := s.getMockNewsData()
+
+	newsEvents, err := s.cryptoNews.FetchNews()
+	if err != nil {
+		logger.Warn("获取新闻失败，使用模拟数据", zap.Error(err))
+		newsEvents = s.getMockNewsData()
+	}
 
 	for _, event := range newsEvents {
 		if err := s.newsRepo.Create(event); err != nil {
@@ -195,7 +204,12 @@ func (s *DataService) collectNewsData() {
 // collectEconomicData 采集经济事件数据
 func (s *DataService) collectEconomicData() {
 	logger.Debug("采集经济事件数据")
-	economicEvents := s.getMockEconomicData()
+
+	economicEvents, err := s.economicCalendar.FetchEvents()
+	if err != nil {
+		logger.Warn("获取经济事件失败，使用模拟数据", zap.Error(err))
+		economicEvents = s.getMockEconomicData()
+	}
 
 	for _, event := range economicEvents {
 		if err := s.economicRepo.Create(event); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -247,7 +248,16 @@ func (h *WebSocketHub) BroadcastTrade(trade *types.Trade) {
 
 // HandleWebSocket 处理WebSocket连接
 func (h *WebSocketHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	if !isLocalRequest(r) && !h.server.hasValidToken(r.URL.Query().Get("token")) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		// 也支持 Authorization 头（Bearer 前缀）
+		auth := r.Header.Get("Authorization")
+		token = strings.TrimPrefix(auth, "Bearer ")
+		if token == auth {
+			token = "" // 没有 Bearer 前缀，不使用
+		}
+	}
+	if !isLocalRequest(r) && !h.server.hasValidToken(token) {
 		http.Error(w, "WebSocket requires local access or a valid token", http.StatusForbidden)
 		return
 	}

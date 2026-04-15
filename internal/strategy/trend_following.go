@@ -523,6 +523,9 @@ func (s *TrendFollowingStrategy) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		s.params[k] = v
 	}
+
+	// 热更新：参数变化后立即重新计算指标，避免等待下一个 Bar
+	s.updateIndicators()
 }
 
 func (s *TrendFollowingStrategy) GetMetrics() map[string]interface{} {

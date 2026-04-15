@@ -185,3 +185,14 @@ func (c *Client) SetLeverage(symbol string, leverage int, marginMode string) err
 
 	return c.restClient.setLeverage(symbol, leverage, marginMode)
 }
+
+// GetFundingRate 获取资金费率
+func (c *Client) GetFundingRate(instId string) (*types.FundingRate, error) {
+	if !c.connected {
+		if err := c.Connect(); err != nil {
+			return nil, err
+		}
+	}
+
+	return c.restClient.getFundingRate(instId)
+}

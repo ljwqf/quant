@@ -224,6 +224,8 @@ func (e *MMPEnginePro) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		e.params[k] = v
 	}
+	// 热更新后立即重算指标，避免等待下一个 Bar
+	e.updateMetrics()
 }
 
 func (e *MMPEnginePro) GetMetrics() map[string]interface{} {

@@ -24,17 +24,20 @@ const (
 )
 
 type wsClient struct {
-	config          *config.OKXConfig
-	conn            *websocket.Conn
-	state           int32
-	mutex           sync.Mutex
-	connMutex       sync.Mutex
-	heartbeatTicker *time.Ticker
-	messageHandler  func([]byte)
-	subscriptions   map[string]bool
-	reconnectChan   chan struct{}
-	ctx             context.Context
-	cancel          context.CancelFunc
+	config           *config.OKXConfig
+	conn             *websocket.Conn
+	state            int32
+	mutex            sync.Mutex
+	connMutex        sync.Mutex
+	heartbeatTicker  *time.Ticker
+	messageHandler   func([]byte)
+	subscriptions    map[string]bool
+	reconnectChan    chan struct{}
+	ctx              context.Context
+	cancel           context.CancelFunc
+	connCtx          context.Context    // per-connection context, replaced on each connect/reconnect
+	connCancel       context.CancelFunc // cancels connCtx to kill old readLoop/heartbeatLoop
+	connMu           sync.Mutex         // protects connCtx/connCancel access
 }
 
 type wsMessage struct {
@@ -82,14 +85,24 @@ func (w *wsClient) connect() error {
 		return fmt.Errorf("WebSocket 连接失败: %w", err)
 	}
 
+	// Cancel any stale connection context before establishing new one
+	w.cancelConnection()
+
 	w.connMutex.Lock()
 	w.conn = conn
 	w.connMutex.Unlock()
 
+	// Create a fresh per-connection context — old goroutines will exit when this is cancelled
+	connCtx, connCancel := context.WithCancel(w.ctx)
+	w.connMu.Lock()
+	w.connCtx = connCtx
+	w.connCancel = connCancel
+	w.connMu.Unlock()
+
 	atomic.StoreInt32(&w.state, wsStateConnected)
 
-	go w.heartbeatLoop()
-	go w.readLoop()
+	go w.heartbeatLoop(connCtx)
+	go w.readLoop(connCtx)
 
 	logger.Info("WebSocket 连接成功")
 	return nil
@@ -103,9 +116,8 @@ func (w *wsClient) disconnect() error {
 		return nil
 	}
 
-	if w.cancel != nil {
-		w.cancel()
-	}
+	// Cancel the per-connection context to kill active readLoop/heartbeatLoop
+	w.cancelConnection()
 
 	if w.heartbeatTicker != nil {
 		w.heartbeatTicker.Stop()
@@ -126,17 +138,30 @@ func (w *wsClient) disconnect() error {
 	return nil
 }
 
-func (w *wsClient) heartbeatLoop() {
-	w.mutex.Lock()
-	w.heartbeatTicker = time.NewTicker(30 * time.Second)
-	ticker := w.heartbeatTicker
-	w.mutex.Unlock()
+// cancelConnection cancels the current per-connection context and cleans up references.
+// Must be called with w.mutex or w.connMu held.
+func (w *wsClient) cancelConnection() {
+	w.connMu.Lock()
+	defer w.connMu.Unlock()
 
+	if w.connCancel != nil {
+		w.connCancel()
+		w.connCancel = nil
+	}
+	w.connCtx = nil
+}
+
+func (w *wsClient) heartbeatLoop(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+
+	w.mutex.Lock()
+	w.heartbeatTicker = ticker
+	w.mutex.Unlock()
 
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if err := w.sendHeartbeat(); err != nil {
@@ -148,10 +173,10 @@ func (w *wsClient) heartbeatLoop() {
 	}
 }
 
-func (w *wsClient) readLoop() {
+func (w *wsClient) readLoop(ctx context.Context) {
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 			w.connMutex.Lock()
@@ -206,6 +231,9 @@ func (w *wsClient) doReconnect() {
 
 	logger.Info("正在重连 WebSocket...")
 
+	// Cancel old connection goroutines before reconnecting
+	w.cancelConnection()
+
 	w.connMutex.Lock()
 	if w.conn != nil {
 		w.conn.Close()
@@ -238,10 +266,17 @@ func (w *wsClient) doReconnect() {
 		w.conn = conn
 		w.connMutex.Unlock()
 
+		// Create a fresh per-connection context so old goroutines are properly terminated
+		connCtx, connCancel := context.WithCancel(w.ctx)
+		w.connMu.Lock()
+		w.connCtx = connCtx
+		w.connCancel = connCancel
+		w.connMu.Unlock()
+
 		atomic.StoreInt32(&w.state, wsStateConnected)
 
-		go w.heartbeatLoop()
-		go w.readLoop()
+		go w.heartbeatLoop(connCtx)
+		go w.readLoop(connCtx)
 
 		w.resubscribe()
 		logger.Info("WebSocket 重连成功")

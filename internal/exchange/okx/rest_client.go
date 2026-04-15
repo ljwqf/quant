@@ -493,6 +493,58 @@ func (r *restClient) setLeverage(symbol string, leverage int, marginMode string)
 	return nil
 }
 
+// getFundingRate 获取资金费率
+func (r *restClient) getFundingRate(instId string) (*types.FundingRate, error) {
+	params := map[string]interface{}{
+		"instId": instId,
+	}
+
+	respBody, err := r.request("GET", "/public/funding-rate", params, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data []struct {
+			InstId         string `json:"instId"`
+			FundingRate    string `json:"fundingRate"`
+			NextFundingRate string `json:"nextFundingRate"`
+			NextSettlementTime string `json:"nextFundingTime"`
+			Ts             string `json:"ts"`
+		}
+	}
+
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if response.Code != "0" {
+		return nil, fmt.Errorf("API 错误: %s - %s", response.Code, response.Msg)
+	}
+
+	if len(response.Data) == 0 {
+		return nil, fmt.Errorf("资金费率数据为空")
+	}
+
+	fundingRate, _ := parseFloat(response.Data[0].FundingRate)
+	nextFundingRate, _ := parseFloat(response.Data[0].NextFundingRate)
+	ts, _ := parseInt(response.Data[0].Ts)
+	t := time.Now()
+	if ts > 0 {
+		t = time.Unix(int64(ts)/1000, 0)
+	}
+
+	return &types.FundingRate{
+		InstId:             response.Data[0].InstId,
+		FundingRate:        fundingRate,
+		NextFundingRate:    nextFundingRate,
+		NextSettlementTime: t,
+		Timestamp:          time.Now(),
+	}, nil
+}
+
 // parseFloat 解析字符串为 float64
 func parseFloat(s string) (float64, error) {
 	var f float64

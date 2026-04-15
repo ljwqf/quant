@@ -119,3 +119,15 @@ type TickData struct {
 	Timestamp time.Time `db:"timestamp"`
 	CreatedAt time.Time `db:"created_at"`
 }
+
+// ActivePosition 策略活跃持仓记录
+type ActivePosition struct {
+	ID         int64     `db:"id"`
+	Strategy   string    `db:"strategy"`
+	Symbol     string    `db:"symbol"`
+	Side       string    `db:"side"`
+	Size       float64   `db:"size"`
+	EntryPrice float64   `db:"entry_price"`
+	OrderID    string    `db:"order_id"`
+	CreatedAt  time.Time `db:"created_at"`
+}

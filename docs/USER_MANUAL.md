@@ -1,6 +1,6 @@
 # OKX 量化交易系统 - 用户手册
 
-&gt; 版本: 1.1.0 | 最后更新: 2026-04-08
+> 版本: 1.3.0 | 最后更新: 2026-04-16
 
 ---
 
@@ -13,8 +13,11 @@
 5. [策略模块](#5-策略模块)
 6. [风控系统](#6-风控系统)
 7. [API 接口](#7-api-接口)
-8. [监控与告警](#8-监控与告警)
-9. [常见问题](#9-常见问题)
+8. [LLM 智能分析](#8-llm-智能分析)
+9. [监控与告警](#9-监控与告警)
+10. [安全功能](#10-安全功能)
+11. [部署指南](#11-部署指南)
+12. [常见问题](#12-常见问题)
 
 ---
 
@@ -428,7 +431,7 @@ execution:
 server:
   enable: true
   port: 8765
-  host: "0.0.0.0"
+  host: "0.0.0.0"        # 0.0.0.0 允许外部访问，127.0.0.1 仅本地
 ```
 
 ### 7.2 Dashboard 访问
@@ -436,7 +439,7 @@ server:
 系统启动后，可以通过浏览器访问 Dashboard：
 
 ```
-http://127.0.0.1:8765
+http://<服务器IP>:8765
 ```
 
 Dashboard 功能：
@@ -444,31 +447,228 @@ Dashboard 功能：
 - 实时行情数据
 - 策略信号查看
 - 持仓和订单管理
+- 条件单和限时单管理
+- 移动止损设置
 - 技术指标可视化
+- LLM 智能分析
 - 系统配置管理
 
-### 7.3 主要接口
+### 7.3 WebSocket 连接
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/health` | GET | 健康检查 |
-| `/ready` | GET | 就绪检查 |
-| `/api/status` | GET | 系统状态 |
-| `/api/strategies` | GET | 策略列表 |
-| `/api/positions` | GET | 持仓信息 |
-| `/api/orders` | GET | 订单列表 |
-| `/api/balance` | GET | 账户余额 |
+```
+ws://<服务器IP>:8765/ws?token=your-token
+```
 
-### 7.4 API 认证
+或使用 `Authorization` 头（编程方式）：
+
+```javascript
+const ws = new WebSocket('ws://<服务器IP>:8765/ws', {
+  headers: { 'Authorization': 'Bearer your-token' }
+});
+```
+
+### 7.4 主要接口
+
+#### 系统与状态
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/health` | GET | 否 | 健康检查 |
+| `/ready` | GET | 否 | 就绪检查 |
+| `/api/status` | GET | 是 | 系统状态 |
+| `/api/strategies` | GET | 是 | 策略列表 |
+| `/api/positions` | GET | 是 | 持仓信息 |
+| `/api/orders` | GET | 是 | 订单列表 |
+| `/api/signals` | GET | 是 | 信号列表 |
+| `/api/account` | GET | 是 | 账户信息 |
+| `/api/config` | GET | 是 | 查看配置 |
+| `/api/config` | PUT/POST | 是 | 保存配置 |
+| `/metrics` | GET | 是 | Prometheus 指标 |
+
+#### 策略控制
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/strategy/start/<name>` | POST | 是 | 启动策略 |
+| `/api/strategy/stop/<name>` | POST | 是 | 停止策略 |
+| `/api/strategy/params/<name>` | GET | 是 | 查看策略参数 |
+| `/api/strategy/params/<name>` | PUT/POST | 是 | 更新策略参数 |
+
+#### 再平衡管理
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/rebalance/circuit` | GET | 是 | 查看熔断状态 |
+| `/api/rebalance/events` | GET | 是 | 再平衡事件历史 |
+| `/api/rebalance/circuit/reset` | POST | 是 | 重置熔断 |
+
+#### 手动交易
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/manual/order` | POST | 是 | 手动下单 |
+| `/api/manual/order/<id>` | DELETE | 是 | 撤单 |
+| `/api/manual/orders` | GET | 是 | 订单列表 |
+| `/api/manual/position/close` | POST | 是 | 手动平仓 |
+| `/api/manual/position/tp-sl` | POST | 是 | 设置止盈止损 |
+| `/api/manual/position/leverage` | POST | 是 | 设置杠杆 |
+| `/api/manual/position/trailing-stop` | POST | 是 | 设置移动止损 |
+
+#### 条件单与限时单
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/manual/conditional-order` | POST | 是 | 创建条件单 |
+| `/api/manual/conditional-order/<id>` | DELETE | 是 | 取消条件单 |
+| `/api/manual/conditional-orders` | GET | 是 | 条件单列表 |
+| `/api/manual/timed-order` | POST | 是 | 创建限时单 |
+| `/api/manual/timed-order/<id>` | DELETE | 是 | 取消限时单 |
+| `/api/manual/timed-orders` | GET | 是 | 限时单列表 |
+
+#### 市场数据
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/market/ticker` | GET | 是 | 实时行情 |
+| `/api/market/bars` | GET | 是 | K线数据 |
+| `/api/market/orderbook` | GET | 是 | 订单簿深度 |
+
+#### LLM 智能分析
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/llm/analyze/trade` | POST | 是 | 交易分析 |
+| `/api/llm/analyze/positions` | GET | 是 | 持仓分析 |
+| `/api/llm/analyze/market` | POST | 是 | 市场分析 |
+| `/api/llm/analyze/orders` | POST | 是 | 订单分析 |
+| `/api/llm/history` | GET | 是 | 分析历史 |
+
+#### 数据服务
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/data/news` | GET | 是 | 新闻数据 |
+| `/api/data/events` | GET | 是 | 经济事件 |
+| `/api/data/collect` | POST | 是 | 立即采集数据 |
+| `/api/data/history` | GET | 是 | 历史K线 |
+| `/api/data/ticks` | GET | 是 | 行情快照 |
+
+#### 回测与指标
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/backtest/start` | POST | 是 | 启动回测 |
+| `/api/backtest/strategies` | GET | 是 | 回测策略列表 |
+| `/api/backtest/results/<id>` | GET | 是 | 回测结果 |
+| `/api/backtest/report/<id>` | GET | 是 | 回测报告 |
+| `/api/indicators/calculate` | POST | 是 | 计算技术指标 |
+| `/api/indicators/list` | GET | 是 | 指标列表 |
+
+#### 提醒与告警
+
+| 接口 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/alerts` | GET | 是 | 告警列表 |
+| `/api/alerts/send` | POST | 是 | 发送告警 |
+
+### 7.5 API 认证
+
+#### 配置 API Token
 
 ```yaml
 server:
-  api_token: "${API_TOKEN}"  # 可选，设置后需要认证
+  api_token: "your-secret-token"     # 设置后所有 /api/* 请求需认证
+  force_token: true                  # 强制认证，忽略本地IP信任
+  trusted_proxies: ["10.0.0.0/8"]   # 可信代理IP段
 ```
 
-请求头：
+#### 认证方式
+
+所有 `/api/*` 读接口（GET）和写接口（POST/PUT/DELETE）均支持以下认证方式：
+
+**方式一：X-API-Token 请求头（推荐）**
+```bash
+curl -H "X-API-Token: your-token" http://<server>:8765/api/status
 ```
-X-API-Token: your-token
+
+**方式二：Authorization Bearer 头**
+```bash
+curl -H "Authorization: Bearer your-token" http://<server>:8765/api/status
+```
+
+**方式三：WebSocket URL 参数**
+```
+ws://<server>:8765/ws?token=your-token
+```
+
+#### 本地信任机制
+
+未配置 `api_token` 时，仅允许本地请求（127.0.0.1, ::1, localhost）访问。
+外部 IP 请求会被拒绝。配置 `api_token` 后，所有请求均需携带令牌。
+
+### 7.6 速率限制
+
+所有写接口（POST/PUT/DELETE）受速率限制保护：
+- **限制**：每个 IP 每分钟最多 60 次请求
+- **响应码**：超出限制返回 `429 Too Many Requests`
+- **说明**：持有有效 Token 的请求不受速率限制（优先通过 Token 认证绕过）
+
+### 7.7 CORS 与安全头
+
+系统自动处理以下安全头，支持跨域浏览器访问：
+
+| 响应头 | 值 | 说明 |
+|--------|-----|------|
+| `Access-Control-Allow-Origin` | 请求的 Origin | 跨域浏览器访问 |
+| `Access-Control-Allow-Methods` | `GET, POST, PUT, DELETE, OPTIONS` | 允许的 HTTP 方法 |
+| `Access-Control-Allow-Headers` | `Content-Type, X-API-Token, Authorization` | 允许的请求头 |
+| `X-Content-Type-Options` | `nosniff` | 防止 MIME 嗅探 |
+| `X-Frame-Options` | `DENY` | 防止点击劫持 |
+| `Cache-Control` | `no-store, no-cache, must-revalidate` | 禁止缓存敏感数据 |
+
+---
+
+## 8. LLM 智能分析
+
+### 8.1 功能概述
+
+系统集成了 OpenAI、Claude、Qwen 三种 LLM 提供商，支持以下分析类型：
+
+- **交易分析**：入场前分析，评估交易信号的质量
+- **持仓分析**：定期评估当前持仓，给出加仓/减仓/平仓建议
+- **市场分析**：整体市场情绪和趋势判断
+- **订单分析**：历史订单表现分析
+
+### 8.2 配置
+
+```yaml
+llm:
+  enable: true
+  provider: "qwen"       # openai / claude / qwen
+  model: "qwen-plus"     # 可选，不填则使用默认模型
+  api_key: "${LLM_API_KEY}"
+  base_url: ""           # 可选，自定义 API 地址
+  timeout: "30s"         # 请求超时
+  max_retries: 3         # 重试次数
+  cache_duration: "5m"   # 响应缓存时间
+```
+
+### 8.3 使用
+
+通过 Web 仪表盘的"AI 智能分析"面板操作，或通过 API 调用：
+
+```bash
+# 交易分析
+curl -X POST http://localhost:8765/api/llm/analyze/trade \
+  -H "X-API-Token: your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC-USDT","side":"buy"}'
+
+# 持仓分析
+curl -X POST http://localhost:8765/api/llm/analyze/positions \
+  -H "X-API-Token: your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC-USDT"}'
 ```
 
 ---
@@ -482,6 +682,8 @@ X-API-Token: your-token
 - 策略表现
 - 订单执行状态
 - 系统资源使用
+- 资金费率
+- Prometheus 指标（`/metrics` 端点）
 
 ### 9.2 告警配置
 
@@ -491,29 +693,256 @@ alert:
   channels:
     - "web"
     - "webhook"
-  price_change_threshold: 0.05  # 价格变动告警阈值
-  check_interval: 1m            # 检查间隔
+    - "dingtalk"   # 钉钉
+    - "wecom"      # 企业微信
+  price_change_threshold: 0.05
+  check_interval: 1m
 
 monitoring:
   alert_threshold:
-    max_drawdown: 0.15    # 回撤告警阈值
-    max_loss: 1500        # 亏损告警阈值
-    position_limit: 15000 # 持仓告警阈值
+    max_drawdown: 0.15
+    max_loss: 1500
+    position_limit: 15000
 ```
 
-### 9.3 Webhook 告警
+### 9.3 通知渠道
 
-```yaml
-monitoring:
-  alert:
-    webhook_url: "${ALERT_WEBHOOK_URL}"
-```
+支持以下通知渠道：
+
+| 渠道 | 配置项 | 说明 |
+|------|--------|------|
+| Web | 内置 | Web 仪表盘内通知 |
+| Webhook | `webhook_url` | 自定义 HTTP 回调 |
+| 钉钉 | `dingtalk_webhook` | 钉钉机器人 Markdown 消息 |
+| 企业微信 | `wecom_webhook` | 企业微信机器人 Markdown 消息 |
 
 ---
 
-## 10. 常见问题
+### 10.4 外部访问与安全
 
-### 10.1 启动失败
+### 10.1 外部服务器部署
+
+将系统部署到云服务器时，需要配置以下内容以允许外部访问并确保安全。
+
+#### 服务器配置
+
+```yaml
+server:
+  enable: true
+  port: 8765
+  host: "0.0.0.0"              # 监听所有网卡，允许外部 IP 访问
+  api_token: "your-secret-token"  # 必须设置，保护 API
+  force_token: true             # 强制认证，禁用本地信任回退
+  trusted_proxies: []           # 如有反向代理，填入代理 IP 段
+```
+
+#### 启用 HTTPS（可选）
+
+```yaml
+server:
+  tls_enable: true
+  tls_cert_file: "/path/to/cert.pem"
+  tls_key_file: "/path/to/key.pem"
+```
+
+启用后服务自动使用 `ListenAndServeTLS`，浏览器访问 `https://<服务器IP>:8765`。
+
+### 10.2 访问控制清单
+
+部署到外部服务器前，请确认以下配置：
+
+| 项目 | 检查项 | 建议值 |
+|------|--------|--------|
+| 绑定地址 | `host` | `0.0.0.0` |
+| API Token | `api_token` | 强随机字符串（>32字符） |
+| 强制认证 | `force_token` | `true` |
+| 防火墙 | 服务器防火墙 | 仅开放 8765 端口 |
+| HTTPS | `tls_enable` | 生产环境建议启用 |
+
+### 10.3 防火墙配置
+
+**Linux (ufw)**
+```bash
+# 仅允许特定 IP 访问
+sudo ufw allow from 192.168.1.0/24 to any port 8765
+
+# 或开放给所有 IP（需配合 API Token 使用）
+sudo ufw allow 8765
+```
+
+**Linux (firewalld)**
+```bash
+firewall-cmd --permanent --add-port=8765/tcp
+firewall-cmd --reload
+```
+
+### 10.4 反向代理配置（Nginx 示例）
+
+如果使用 Nginx 作为反向代理并添加 HTTPS：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # WebSocket 支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+配置后需在量化系统中添加代理 IP 到信任列表：
+```yaml
+server:
+  trusted_proxies: ["127.0.0.1/32"]
+```
+
+### 10.5 WebSocket 外部访问
+
+外部客户端连接 WebSocket 时，必须携带有效 Token：
+
+```javascript
+// 浏览器端连接示例
+const ws = new WebSocket('wss://your-domain.com/ws?token=your-token');
+
+ws.onopen = () => {
+    // 订阅行情数据
+    ws.send(JSON.stringify({
+        action: 'subscribe',
+        events: ['ticker', 'positions', 'orders']
+    }));
+};
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log(data.type, data.data);
+};
+```
+
+### 10.6 安全建议
+
+1. **API Token 安全**
+   - 使用强随机字符串（建议 32+ 字符）
+   - 不要在配置文件中明文存储，使用环境变量 `${API_TOKEN}`
+   - 定期更换 Token
+
+2. **HTTPS 优先**
+   - 生产环境建议启用 TLS，防止中间人攻击
+   - 可使用 Let's Encrypt 免费证书
+
+3. **最小权限原则**
+   - OKX API 密钥仅授予"交易"权限，不授予"提币"
+   - 使用模拟盘充分测试后再切换实盘
+
+4. **防火墙限制**
+   - 如果只从固定 IP 访问，在防火墙层面限制来源 IP
+   - 不要将管理端口暴露到公网
+
+5. **监控异常访问**
+   - 查看日志中的 "API认证失败" 告警
+   - 关注速率限制触发的 429 响应
+
+## 10. 安全功能
+
+### 10.1 审计日志
+
+系统内置结构化审计日志，记录以下 14 种敏感操作：
+
+| 事件类型 | 说明 |
+|----------|------|
+| `order.create` / `order.cancel` | 下单/撤单 |
+| `config.update` | 配置变更 |
+| `strategy.start` / `strategy.stop` / `strategy.params` | 策略启停/参数修改 |
+| `leverage.change` | 杠杆调整 |
+| `tpsl.change` | 止盈止损设置 |
+| `trailing.stop` | 移动止损 |
+| `timedorder.create` / `timedorder.cancel` | 限时单创建/取消 |
+| `condorder.create` / `condorder.cancel` | 条件单创建/取消 |
+| `rebalance.reset` | 再平衡重置 |
+
+每条记录包含：时间戳、调用方身份（api_token/local/anonymous）、HTTP 方法、路径、远程地址、详情、状态。
+同时输出结构化字段和 JSON 格式，便于日志聚合工具查询。
+
+### 10.2 IP 白名单
+
+在 `server.ip_whitelist` 中配置允许的 IP 地址段，支持 CIDR 格式：
+
+```yaml
+server:
+  ip_whitelist:
+    - "192.168.1.0/24"
+    - "10.0.0.1"
+```
+
+- 不配置时：允许所有请求
+- 配置后：仅白名单内 IP 可访问，其他返回 403
+- 支持 `X-Forwarded-For` / `X-Real-IP` 头提取真实 IP（反向代理场景）
+- 运行时可通过 `Update()` 方法动态刷新
+
+### 10.3 HTTPS/TLS
+
+```yaml
+server:
+  tls_enable: true
+  tls_cert_file: "/path/to/cert.pem"
+  tls_key_file: "/path/to/key.pem"
+```
+
+启用后服务自动使用 `ListenAndServeTLS` 启动。
+
+---
+
+## 11. 部署指南
+
+### 11.1 Docker 部署
+
+```bash
+docker build -t okx-quant .
+docker run -d --name quant \
+  -p 8765:8765 \
+  -e OKX_API_KEY=xxx \
+  -e OKX_SECRET_KEY=xxx \
+  -e OKX_PASSPHRASE=xxx \
+  okx-quant
+```
+
+Dockerfile 特性：多阶段构建、CGO_ENABLED=0 静态链接、非 root 用户（appuser）、健康检查（/health 端点）、ldflags 版本注入。
+
+### 11.2 Kubernetes 部署
+
+```bash
+kubectl apply -f deployments/k8s/
+```
+
+包含：namespace、configmap、secret、deployment、service、pvc。
+详见 `deployments/k8s/README.md`。
+
+### 11.3 CI/CD
+
+推送代码到 GitHub 后自动触发：
+1. **lint** — golangci-lint + go vet + gofmt
+2. **test** — -race 检测 + coverage 统计
+3. **build** — 多平台交叉编译（linux/darwin/windows × amd64/arm64）
+4. **security** — Trivy 漏洞扫描
+
+详见 `.github/workflows/ci.yml`。
+
+---
+
+## 12. 常见问题
+
+### 11.1 启动失败
 
 **问题**: `加载配置失败`
 
@@ -526,7 +955,7 @@ monitoring:
 make check-env
 ```
 
-### 10.2 API 连接失败
+### 11.2 API 连接失败
 
 **问题**: `连接交易所失败`
 
@@ -536,7 +965,7 @@ make check-env
 3. 检查 IP 白名单设置
 4. 确认 API 权限配置
 
-### 10.3 策略不执行
+### 11.3 策略不执行
 
 **问题**: 策略已启用但不产生交易
 
@@ -546,7 +975,7 @@ make check-env
 3. 检查行情数据是否正常
 4. 查看日志了解具体原因
 
-### 10.4 流动性检查失败
+### 11.4 流动性检查失败
 
 **问题**: `ErrLiquidityInsufficient`
 
@@ -561,7 +990,7 @@ execution:
     max_estimated_slippage: 0.005  # 提高到 0.5%
 ```
 
-### 10.5 如何切换交易对
+### 11.5 如何切换交易对
 
 修改配置文件：
 ```yaml
@@ -570,6 +999,35 @@ strategy:
 ```
 
 或使用命令行参数（需代码支持）。
+
+### 11.6 外部浏览器无法访问 Dashboard
+
+**问题**: 部署到服务器后，浏览器打不开 Dashboard
+
+**解决**:
+1. 确认 `host` 配置为 `0.0.0.0` 而非 `127.0.0.1`
+2. 确认服务器防火墙已开放 8765 端口
+3. 检查云服务器安全组是否放行了 8765 端口
+4. 测试连通性: `curl http://<服务器IP>:8765/health`
+
+### 11.7 API 请求返回 401 未授权
+
+**问题**: 调用 API 接口返回 `{"error": "未授权：缺少认证令牌"}`
+
+**解决**:
+1. 未配置 `api_token` 时，仅本地请求可访问。外部请求需设置 `api_token`
+2. 请求时携带认证头: `-H "X-API-Token: your-token"`
+3. 或在 WebSocket URL 中添加 `?token=your-token` 参数
+4. 配置 `force_token: true` 后可强制所有请求认证
+
+### 11.8 API 请求返回 429 请求过多
+
+**问题**: 频繁调用写接口返回 429 错误
+
+**解决**:
+1. 降低请求频率，每 IP 每分钟限制 60 次写操作
+2. 持有有效 Token 的请求不受速率限制，确保携带正确的 `X-API-Token`
+3. 在客户端实现重试机制，遇到 429 时等待后重试
 
 ---
 

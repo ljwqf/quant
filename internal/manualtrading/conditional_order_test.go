@@ -86,6 +86,14 @@ func (m *mockExchange) SubscribeBar(symbol string, interval string, handler func
 func (m *mockExchange) SubscribeOrderBook(symbol string, handler func(*types.OrderBook)) error { return nil }
 func (m *mockExchange) GetBars(symbol string, interval string, limit int) ([]*types.Bar, error) { return nil, nil }
 func (m *mockExchange) SetLeverage(symbol string, leverage int, marginMode string) error { return nil }
+func (m *mockExchange) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return &types.AlgoOrderResult{AlgoID: "algo_" + order.Symbol}, nil
+}
+func (m *mockExchange) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (m *mockExchange) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (m *mockExchange) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
 
 func TestConditionalOrderManager_CreateOrder(t *testing.T) {
 	cfg := &config.ManualTradingConfig{}

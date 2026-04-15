@@ -382,6 +382,9 @@ func (s *NeedleStrategy) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		s.params[k] = v
 	}
+	// 热更新：重新计算超级趋势指标和MACD
+	s.calculateSupertrend()
+	s.calculateMACD()
 }
 
 func (s *NeedleStrategy) GetMetrics() map[string]interface{} {

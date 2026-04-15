@@ -76,6 +76,14 @@ func (m *mockExchangeForConditional) GetBars(symbol string, interval string, lim
 func (m *mockExchangeForConditional) SetLeverage(symbol string, leverage int, marginMode string) error {
 	return nil
 }
+func (m *mockExchangeForConditional) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return &types.AlgoOrderResult{AlgoID: "test_algo_" + order.Symbol, Symbol: order.Symbol, Status: "active"}, nil
+}
+func (m *mockExchangeForConditional) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (m *mockExchangeForConditional) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (m *mockExchangeForConditional) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
 
 func TestConditionalOrderManager_AddStopLoss(t *testing.T) {
 	mockEx := &mockExchangeForConditional{}

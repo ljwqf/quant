@@ -468,6 +468,9 @@ function handleMessage(message) {
         case 'order_update':
             handleOrderUpdate(message.data);
             break;
+        case 'conditional_order':
+            handleConditionalOrderEvent(message.data);
+            break;
         case 'subscription':
             console.log('订阅确认:', message.data);
             break;
@@ -1222,6 +1225,7 @@ async function refreshManualPositions() {
                     </div>
                     <div class="position-actions">
                         <button class="btn btn-small btn-danger" onclick="manualClosePosition('${pos.symbol}', ${pos.size})">平仓</button>
+                        <button class="btn btn-small btn-warning" onclick="openTrailingStopDialog('${pos.symbol}')">移动止损</button>
                     </div>
                 </div>
             `).join('');
@@ -2841,4 +2845,264 @@ function calculateADX(data, period) {
         plusDI: pad.concat(plusDI),
         minusDI: pad.concat(minusDI)
     };
+}
+
+// ==================== 条件单功能 ====================
+
+// 切换条件类型输入框
+function toggleConditionInputs() {
+    const conditionalType = document.getElementById('conditional-type').value;
+    const priceGroup = document.getElementById('price-condition-group');
+    const priceValueGroup = document.getElementById('price-value-group');
+    const timeGroup = document.getElementById('time-condition-group');
+
+    if (conditionalType === 'price') {
+        priceGroup.classList.remove('hidden');
+        priceValueGroup.classList.remove('hidden');
+        timeGroup.classList.add('hidden');
+    } else {
+        priceGroup.classList.add('hidden');
+        priceValueGroup.classList.add('hidden');
+        timeGroup.classList.remove('hidden');
+    }
+}
+
+// 提交条件单
+async function submitConditionalOrder() {
+    const symbol = document.getElementById('conditional-trade-symbol').value;
+    const side = document.getElementById('conditional-trade-side').value;
+    const size = parseFloat(document.getElementById('conditional-trade-size').value) || 0;
+    const orderType = document.getElementById('conditional-order-type').value;
+    const price = parseFloat(document.getElementById('conditional-trade-price').value) || 0;
+    const conditionalType = document.getElementById('conditional-type').value;
+
+    if (!size) {
+        showRuntimeNotice('请输入数量', 'warning');
+        return;
+    }
+
+    if (orderType === 'limit' && !price) {
+        showRuntimeNotice('限价单请输入价格', 'warning');
+        return;
+    }
+
+    const payload = {
+        symbol,
+        side,
+        size,
+        order_type: orderType,
+        conditional_type: conditionalType
+    };
+
+    if (conditionalType === 'price') {
+        const direction = document.getElementById('price-direction').value;
+        const triggerPrice = parseFloat(document.getElementById('price-value').value) || 0;
+
+        if (!triggerPrice) {
+            showRuntimeNotice('请输入触发价格', 'warning');
+            return;
+        }
+
+        payload.condition = {
+            direction,
+            price: triggerPrice
+        };
+        if (orderType === 'limit') {
+            payload.price = price;
+        }
+    } else if (conditionalType === 'time') {
+        const executeTime = document.getElementById('time-value').value;
+
+        if (!executeTime) {
+            showRuntimeNotice('请选择执行时间', 'warning');
+            return;
+        }
+
+        payload.condition = {
+            time: executeTime
+        };
+        if (orderType === 'limit') {
+            payload.price = price;
+        }
+    } else {
+        showRuntimeNotice('不支持的条件类型', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/manual/conditional-order', {
+            method: 'POST',
+            headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || '创建条件单失败');
+        }
+        console.log('条件单创建结果:', result);
+        showRuntimeNotice('条件单创建成功！', 'success');
+        document.getElementById('conditional-trade-size').value = '';
+        document.getElementById('conditional-trade-price').value = '';
+        document.getElementById('price-value').value = '';
+        document.getElementById('time-value').value = '';
+        refreshConditionalOrders();
+    } catch (error) {
+        console.error('创建条件单失败:', error);
+        showRuntimeNotice('创建条件单失败: ' + error.message, 'error');
+    }
+}
+
+// 刷新条件单列表
+async function refreshConditionalOrders() {
+    const container = document.getElementById('conditional-orders-list');
+    container.innerHTML = '<div class="loading-text">加载中...</div>';
+
+    try {
+        const response = await fetch('/api/manual/conditional-orders?status=pending', {
+            headers: buildAuthHeaders()
+        });
+        const result = await response.json();
+
+        if (result.orders && result.orders.length > 0) {
+            container.innerHTML = result.orders.map(order => {
+                const conditionDesc = formatCondition(order.condition, order.type);
+                const statusBadge = order.status.toLowerCase();
+                return `
+                <div class="order-item">
+                    <div class="order-header">
+                        <span class="order-symbol">${order.symbol}</span>
+                        <span class="badge ${statusBadge}">${order.status}</span>
+                    </div>
+                    <div class="order-details">
+                        <div>方向: <span class="${order.side}">${order.side}</span></div>
+                        <div>数量: ${formatNumber(order.size)}</div>
+                        <div>类型: ${order.order_type}</div>
+                        <div>条件: ${conditionDesc}</div>
+                        <div>创建时间: ${formatTime(order.created_at)}</div>
+                        ${order.trigger_price ? `<div>触发价格: ${formatNumber(order.trigger_price)}</div>` : ''}
+                        ${order.triggered_at ? `<div>触发时间: ${formatTime(order.triggered_at)}</div>` : ''}
+                        ${order.order_id ? `<div>关联订单: ${order.order_id}</div>` : ''}
+                        ${order.reason ? `<div>原因: ${order.reason}</div>` : ''}
+                    </div>
+                    <div class="order-actions">
+                        ${order.status === 'pending' ?
+                            `<button class="btn btn-small btn-danger" onclick="cancelConditionalOrder('${order.id}')">取消</button>` :
+                            ''}
+                    </div>
+                </div>
+                `;
+            }).join('');
+        } else {
+            container.innerHTML = '<div class="empty-text">暂无条件单</div>';
+        }
+    } catch (error) {
+        console.error('获取条件单失败:', error);
+        container.innerHTML = '<div class="error-text">获取条件单失败</div>';
+    }
+}
+
+// 格式化条件描述
+function formatCondition(condition, orderType) {
+    if (!condition) return '未知';
+    if (orderType === 'price') {
+        const dir = condition.direction === 'above' ? '≥' : '≤';
+        return `价格${dir} ${formatNumber(condition.price || 0)}`;
+    } else if (orderType === 'time') {
+        return `时间到达 ${formatTime(condition.time)}`;
+    }
+    return JSON.stringify(condition);
+}
+
+// 取消条件单
+async function cancelConditionalOrder(orderId) {
+    showConfirmDialog(
+        '确认取消',
+        '确定要取消此条件单吗？',
+        async () => {
+            try {
+                const response = await fetch(`/api/manual/conditional-order/${orderId}`, {
+                    method: 'DELETE',
+                    headers: buildAuthHeaders()
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || '取消失败');
+                }
+
+                showRuntimeNotice('条件单已取消', 'success');
+                refreshConditionalOrders();
+            } catch (error) {
+                console.error('取消条件单失败:', error);
+                showRuntimeNotice('取消失败: ' + error.message, 'error');
+            }
+        }
+    );
+}
+
+// ==================== 移动止损 ====================
+
+// 打开移动止损设置对话框
+function openTrailingStopDialog(symbol) {
+    const dialog = document.getElementById('trailing-stop-dialog');
+    if (!dialog) {
+        // Dialog doesn't exist yet, create it inline
+        showRuntimeNotice('请在交易面板"持仓"tab中点击移动止损按钮', 'warning');
+        return;
+    }
+    document.getElementById('trailing-stop-symbol').value = symbol;
+    document.getElementById('trailing-stop-distance').value = '';
+    dialog.classList.remove('hidden');
+}
+
+// 关闭移动止损对话框
+function closeTrailingStopDialog() {
+    const dialog = document.getElementById('trailing-stop-dialog');
+    if (dialog) {
+        dialog.classList.add('hidden');
+    }
+}
+
+// 提交移动止损设置
+async function submitTrailingStop() {
+    const symbol = document.getElementById('trailing-stop-symbol').value;
+    const stopDistance = parseFloat(document.getElementById('trailing-stop-distance').value) || 0;
+
+    if (!stopDistance || stopDistance <= 0) {
+        showRuntimeNotice('请输入有效的止损距离', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/manual/position/trailing-stop', {
+            method: 'POST',
+            headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ symbol, stop_distance: stopDistance })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || '设置移动止损失败');
+        }
+        showRuntimeNotice('移动止损设置成功！', 'success');
+        closeTrailingStopDialog();
+    } catch (error) {
+        console.error('设置移动止损失败:', error);
+        showRuntimeNotice('设置移动止损失败: ' + error.message, 'error');
+    }
+}
+
+// ==================== WebSocket 条件单事件处理 ====================
+
+// 处理条件单状态变更推送
+function handleConditionalOrderEvent(data) {
+    if (!data) return;
+    console.log('条件单状态变更:', data);
+    const message = `条件单 ${data.symbol}: ${data.status}`;
+    if (data.order_id) {
+        showRuntimeNotice(`${message} -> 订单 ${data.order_id}`, 'info');
+    } else {
+        showRuntimeNotice(message, 'info');
+    }
+    // 刷新条件单列表
+    refreshConditionalOrders();
 }

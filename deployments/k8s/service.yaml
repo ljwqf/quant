@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: quant-trader
+  namespace: quant-trading
+  labels:
+    app: quant-trader
+spec:
+  selector:
+    app: quant-trader
+  ports:
+    - port: 8765
+      targetPort: 8765
+      name: http
+      protocol: TCP
+  type: ClusterIP

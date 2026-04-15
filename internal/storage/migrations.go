@@ -190,4 +190,23 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_tick_data_timestamp ON tick_data(timestamp);
 		`,
 	},
+	{
+		version: "009",
+		name:    "create_active_positions_table",
+		up: `
+			CREATE TABLE IF NOT EXISTS active_positions (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				strategy TEXT NOT NULL,
+				symbol TEXT NOT NULL,
+				side TEXT NOT NULL,
+				size DECIMAL NOT NULL,
+				entry_price DECIMAL NOT NULL,
+				order_id TEXT NOT NULL,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_active_positions_strategy_symbol ON active_positions(strategy, symbol);
+			CREATE INDEX IF NOT EXISTS idx_active_positions_strategy ON active_positions(strategy);
+			CREATE INDEX IF NOT EXISTS idx_active_positions_symbol ON active_positions(symbol);
+		`,
+	},
 }

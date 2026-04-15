@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -73,6 +74,10 @@ type Server struct {
 	apiToken        string
 	trustedProxies  []*net.IPNet
 	forceToken      bool
+	tlsEnable       bool
+	tlsCertFile     string
+	tlsKeyFile      string
+	ipWhitelist     *IPWhitelist
 	actions         *ActionHandlers
 	manualTradeMgr  *manualtrading.Manager
 	analyzer        *llmanalysis.Analyzer
@@ -83,12 +88,22 @@ type Server struct {
 	metrics         *monitoring.Metrics
 	strategyEngine  *strategy.Engine
 
+	// 速率限制
+	rateLimitMu      sync.Mutex
+	rateLimitBuckets map[string]*rateBucket
+
+	// 系统状态
 	systemStatus *SystemStatus
 	strategies   map[string]*StrategyStatus
 	positions    []*PositionInfo
 	orders       []*OrderInfo
 	signals      []*SignalInfo
 	rebalance    []*RebalanceEventInfo
+}
+
+type rateBucket struct {
+	tokens    int
+	lastReset time.Time
 }
 
 // 手动交易相关请求结构
@@ -134,10 +149,6 @@ type createTimedOrderRequest struct {
 	ExecuteAt string  `json:"execute_at"`
 }
 
-type cancelTimedOrderRequest struct {
-	ID string `json:"id"`
-}
-
 type createConditionalOrderRequest struct {
 	Symbol          string                 `json:"symbol"`
 	Side            string                 `json:"side"`
@@ -146,10 +157,6 @@ type createConditionalOrderRequest struct {
 	ConditionalType string                 `json:"conditional_type"`
 	Condition       map[string]interface{} `json:"condition"`
 	Price           float64                `json:"price,omitempty"`
-}
-
-type cancelConditionalOrderRequest struct {
-	ID string `json:"id"`
 }
 
 // SystemStatus 系统状态
@@ -281,6 +288,12 @@ func NewServer(host string, port int, cfg *config.Config, configPath string, act
 		if cfg.Server.APIToken != "" {
 			s.apiToken = cfg.Server.APIToken
 		}
+		s.tlsEnable = cfg.Server.TLSEnable
+		s.tlsCertFile = cfg.Server.TLSCertFile
+		s.tlsKeyFile = cfg.Server.TLSKeyFile
+		s.ipWhitelist = NewIPWhitelist(cfg.Server.IPWhitelist, func(ip string) {
+			logger.Info("IP白名单拦截", zap.String("ip", ip))
+		})
 	}
 
 	s.wsHub = NewWebSocketHub(s)
@@ -347,9 +360,6 @@ type analyzeTradeRequest struct {
 	Side   string  `json:"side"`
 	Size   float64 `json:"size"`
 	Price  float64 `json:"price,omitempty"`
-}
-
-type analyzePositionRequest struct {
 }
 
 type analyzeMarketRequest struct {
@@ -503,9 +513,18 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 // Start 启动服务器
 func (s *Server) Start() error {
+	// 将 mux 包装为带中间件的 handler
+	handler := corsMiddleware(securityHeadersMiddleware(s.mux))
+	if s.ipWhitelist != nil {
+		handler = s.ipWhitelist.Middleware(handler)
+	}
+
 	server := &http.Server{
-		Addr:    net.JoinHostPort(s.host, strconv.Itoa(s.port)),
-		Handler: s.mux,
+		Addr:         net.JoinHostPort(s.host, strconv.Itoa(s.port)),
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 5 * time.Minute,  // LLM 分析可能耗时较长
+		IdleTimeout:  120 * time.Second,
 	}
 
 	s.mutex.Lock()
@@ -516,7 +535,11 @@ func (s *Server) Start() error {
 
 	go s.wsHub.Run()
 
-	logger.Info("API服务器启动", zap.String("host", s.host), zap.Int("port", s.port))
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
+	logger.Info("API服务器启动", zap.String("addr", addr), zap.Bool("tls", s.tlsEnable))
+	if s.tlsEnable && s.tlsCertFile != "" && s.tlsKeyFile != "" {
+		return server.ListenAndServeTLS(s.tlsCertFile, s.tlsKeyFile)
+	}
 	return server.ListenAndServe()
 }
 
@@ -528,7 +551,9 @@ func (s *Server) Stop() error {
 	s.mutex.Unlock()
 
 	if server != nil {
-		return server.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return server.Shutdown(ctx)
 	}
 	return nil
 }
@@ -643,12 +668,18 @@ func (s *Server) AddOrder(order *OrderInfo) {
 
 // API处理函数
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	writeJSON(w, http.StatusOK, s.systemStatus)
 }
 
 func (s *Server) handleStrategies(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	strategies := make([]*StrategyStatus, 0)
@@ -659,24 +690,36 @@ func (s *Server) handleStrategies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePositions(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	writeJSON(w, http.StatusOK, s.positions)
 }
 
 func (s *Server) handleOrders(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	writeJSON(w, http.StatusOK, s.orders)
 }
 
 func (s *Server) handleSignals(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	writeJSON(w, http.StatusOK, s.signals)
 }
 
 func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	writeJSON(w, http.StatusOK, s.systemStatus)
@@ -694,6 +737,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -708,6 +754,9 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -763,6 +812,9 @@ func (s *Server) handleStrategyStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 	if s.actions == nil || s.actions.StartStrategy == nil {
 		http.Error(w, "Strategy control is not available", http.StatusNotImplemented)
 		return
@@ -794,6 +846,9 @@ func (s *Server) handleStrategyStop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 	if s.actions == nil || s.actions.StopStrategy == nil {
 		http.Error(w, "Strategy control is not available", http.StatusNotImplemented)
 		return
@@ -823,6 +878,9 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 	if s.actions == nil || s.actions.CreateOrder == nil {
@@ -875,6 +933,9 @@ func (s *Server) handleClosePosition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 	if s.actions == nil || s.actions.ClosePosition == nil {
 		http.Error(w, "Position close is not available", http.StatusNotImplemented)
 		return
@@ -899,6 +960,9 @@ func (s *Server) handleRebalanceCircuit(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	if s.actions == nil || s.actions.GetRebalanceCircuit == nil {
 		http.Error(w, "Rebalance circuit control is not available", http.StatusNotImplemented)
 		return
@@ -916,6 +980,9 @@ func (s *Server) handleRebalanceEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.GetRecentRebalanceEvents(maxRecentRebalanceEvents))
 }
 
@@ -926,6 +993,9 @@ func (s *Server) handleRebalanceCircuitReset(w http.ResponseWriter, r *http.Requ
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 	if s.actions == nil || s.actions.ResetRebalanceCircuit == nil {
@@ -1108,6 +1178,15 @@ func (s *Server) requireMutationAccess(r *http.Request) error {
 	return fmt.Errorf("mutation endpoint requires trusted access or a valid X-API-Token")
 }
 
+// checkRateLimit returns false if the client has exceeded the rate limit.
+func (s *Server) checkRateLimit(w http.ResponseWriter, r *http.Request) bool {
+	if !s.rateLimit(r) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "请求频率过高，请稍后重试"})
+		return false
+	}
+	return true
+}
+
 func (s *Server) hasValidToken(token string) bool {
 	if s.apiToken == "" {
 		return false
@@ -1116,7 +1195,15 @@ func (s *Server) hasValidToken(token string) bool {
 }
 
 func isLocalRequest(r *http.Request) bool {
-	return false
+	host := r.RemoteAddr
+	// RemoteAddr may include port, extract just the IP
+	if idx := strings.LastIndex(host, ":"); idx != -1 {
+		host = host[:idx]
+	}
+	// Handle IPv6 bracket notation
+	host = strings.TrimPrefix(host, "[")
+	host = strings.TrimSuffix(host, "]")
+	return host == "127.0.0.1" || host == "::1" || host == "localhost"
 }
 
 func (s *Server) isTrustedRequest(r *http.Request) bool {
@@ -1199,6 +1286,88 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 	}
 }
 
+// corsMiddleware 跨域资源共享中间件
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Token, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeadersMiddleware 安全响应头中间件
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireReadAccess 读请求认证（所有 /api/* GET 请求）
+func (s *Server) requireReadAccess(w http.ResponseWriter, r *http.Request) bool {
+	// 未配置 token 则放行（与 requireMutationAccess 保持一致）
+	if s.apiToken == "" {
+		return true
+	}
+	// 检查 X-API-Token 头
+	token := r.Header.Get("X-API-Token")
+	if token == "" {
+		// 也支持 Authorization Bearer
+		auth := r.Header.Get("Authorization")
+		token = strings.TrimPrefix(auth, "Bearer ")
+		if token == auth {
+			token = ""
+		}
+	}
+	if token == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "未授权：缺少认证令牌"})
+		return false
+	}
+	if !s.hasValidToken(token) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "未授权：无效的认证令牌"})
+		return false
+	}
+	return true
+}
+
+// rateLimiter 简单的基于 IP 的速率限制（每分钟 60 次突变请求）
+func (s *Server) rateLimit(r *http.Request) bool {
+	if s.apiToken == "" {
+		return true // 无 token 则不限制
+	}
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+	if s.rateLimitBuckets == nil {
+		s.rateLimitBuckets = make(map[string]*rateBucket)
+	}
+	bucket, exists := s.rateLimitBuckets[ip]
+	if !exists || time.Since(bucket.lastReset) > time.Minute {
+		s.rateLimitBuckets[ip] = &rateBucket{tokens: 60, lastReset: time.Now()}
+		return true
+	}
+	if bucket.tokens <= 0 {
+		return false
+	}
+	bucket.tokens--
+	return true
+}
+
 // 手动交易处理函数
 func (s *Server) handleManualCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -1207,6 +1376,9 @@ func (s *Server) handleManualCreateOrder(w http.ResponseWriter, r *http.Request)
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -1272,6 +1444,9 @@ func (s *Server) handleManualCancelOrder(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1303,6 +1478,9 @@ func (s *Server) handleManualCancelOrder(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleManualListOrders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -1354,6 +1532,9 @@ func (s *Server) handleManualClosePosition(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1394,6 +1575,9 @@ func (s *Server) handleManualSetTpSl(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -1438,6 +1622,9 @@ func (s *Server) handleManualSetLeverage(w http.ResponseWriter, r *http.Request)
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -1489,6 +1676,9 @@ func (s *Server) handleManualSetTrailingStop(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1535,6 +1725,9 @@ func (s *Server) handleCreateTimedOrder(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -1601,6 +1794,9 @@ func (s *Server) handleCancelTimedOrder(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1634,6 +1830,9 @@ func (s *Server) handleListTimedOrders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1665,6 +1864,9 @@ func (s *Server) handleCreateConditionalOrder(w http.ResponseWriter, r *http.Req
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -1743,6 +1945,9 @@ func (s *Server) handleCancelConditionalOrder(w http.ResponseWriter, r *http.Req
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if !s.checkRateLimit(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1776,6 +1981,9 @@ func (s *Server) handleListConditionalOrders(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	mgr := s.manualTradeMgr
@@ -1805,6 +2013,9 @@ func (s *Server) handleGetTicker(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	symbol := r.URL.Query().Get("symbol")
 	if symbol == "" {
@@ -1824,6 +2035,9 @@ func (s *Server) handleGetTicker(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetBars(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -1860,6 +2074,9 @@ func (s *Server) handleGetOrderBook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	symbol := r.URL.Query().Get("symbol")
 	if symbol == "" {
@@ -1892,6 +2109,9 @@ func (s *Server) handleLLMAnalyzeTrade(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -1941,6 +2161,9 @@ func (s *Server) handleLLMAnalyzePositions(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	analyzer := s.analyzer
@@ -1972,6 +2195,9 @@ func (s *Server) handleLLMAnalyzeMarket(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -2015,6 +2241,9 @@ func (s *Server) handleLLMAnalyzeOrders(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -2070,6 +2299,9 @@ func (s *Server) handleLLMHistory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	analyzer := s.analyzer
@@ -2106,6 +2338,9 @@ func (s *Server) handleGetNews(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	dataService := s.dataService
@@ -2139,6 +2374,9 @@ func (s *Server) handleGetNews(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -2178,6 +2416,9 @@ func (s *Server) handleCollectNow(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -2220,6 +2461,9 @@ type IndicatorConfig struct {
 func (s *Server) handleGetAlerts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -2268,6 +2512,9 @@ func (s *Server) handleSendAlert(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -2324,6 +2571,9 @@ func (s *Server) handleListIndicators(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	// 返回支持的指标列表和参数说明
 	indicators := []map[string]interface{}{
@@ -2376,6 +2626,13 @@ func (s *Server) handleListIndicators(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCalculateIndicators(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.requireMutationAccess(r); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -2527,6 +2784,9 @@ func (s *Server) handleGetHistoryData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	symbol := r.URL.Query().Get("symbol")
 	if symbol == "" {
@@ -2572,6 +2832,9 @@ func (s *Server) handleGetHistoryData(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetTickData(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -2624,13 +2887,29 @@ type backtestTask struct {
 var (
 	backtestTasks       = make(map[string]*backtestTask)
 	backtestTasksMutex  sync.RWMutex
-	backtestTaskCounter int64
 )
+
+// cleanupExpiredBacktestTasks 清理已完成超过 1 小时的回测任务
+func cleanupExpiredBacktestTasks() {
+	now := time.Now()
+	backtestTasksMutex.Lock()
+	defer backtestTasksMutex.Unlock()
+	for id, task := range backtestTasks {
+		if task.Status == "completed" || task.Status == "failed" {
+			if task.FinishedAt != nil && now.Sub(*task.FinishedAt) > time.Hour {
+				delete(backtestTasks, id)
+			}
+		}
+	}
+}
 
 // handleBacktestStrategies 获取可用的回测策略列表
 func (s *Server) handleBacktestStrategies(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -2680,6 +2959,9 @@ func (s *Server) handleBacktestStart(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -2802,6 +3084,11 @@ func (s *Server) handleBacktestGetResults(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
+
+	cleanupExpiredBacktestTasks()
 
 	taskID := strings.TrimPrefix(r.URL.Path, "/api/backtest/results/")
 	if taskID == "" {
@@ -2845,6 +3132,9 @@ func (s *Server) handleBacktestGetResults(w http.ResponseWriter, r *http.Request
 func (s *Server) handleBacktestGetReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
 		return
 	}
 
@@ -2918,6 +3208,9 @@ func (s *Server) handleStrategyParams(w http.ResponseWriter, r *http.Request) {
 
 // getStrategyParams 获取策略参数
 func (s *Server) getStrategyParams(w http.ResponseWriter, r *http.Request, strategyName string) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 	s.mutex.RLock()
 	engine := s.strategyEngine
 	s.mutex.RUnlock()
@@ -2983,6 +3276,9 @@ func (s *Server) setStrategyParams(w http.ResponseWriter, r *http.Request, strat
 
 	if err := s.requireMutationAccess(r); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	if !s.checkRateLimit(w, r) {
 		return
 	}
 
@@ -3060,6 +3356,9 @@ func (s *Server) handleGetMetrics(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -3083,6 +3382,9 @@ func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -3092,64 +3394,21 @@ func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-
 	if s.metrics.GetSystemMetrics() != nil {
 		s.metrics.GetSystemMetrics().Update()
 	}
 
-	allMetrics := s.metrics.GetAllMetrics()
-
-	w.Write([]byte("# HELP quant_system_cpu_percent CPU usage percentage\n"))
-	w.Write([]byte("# TYPE quant_system_cpu_percent gauge\n"))
-	if cpu, ok := allMetrics["system"].(map[string]interface{})["cpu_percent"].(float64); ok {
-		w.Write([]byte(fmt.Sprintf("quant_system_cpu_percent %f\n", cpu)))
+	prom := s.metrics.GetPrometheusMetrics()
+	if prom == nil {
+		http.Error(w, "prometheus metrics not initialized", http.StatusServiceUnavailable)
+		return
 	}
 
-	w.Write([]byte("# HELP quant_system_memory_percent Memory usage percentage\n"))
-	w.Write([]byte("# TYPE quant_system_memory_percent gauge\n"))
-	if mem, ok := allMetrics["system"].(map[string]interface{})["memory_percent"].(float64); ok {
-		w.Write([]byte(fmt.Sprintf("quant_system_memory_percent %f\n", mem)))
-	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
 
-	if apiStats, ok := allMetrics["api"].(map[string]interface{}); ok {
-		w.Write([]byte("# HELP quant_api_total_requests Total API requests\n"))
-		w.Write([]byte("# TYPE quant_api_total_requests counter\n"))
-		if totalRequests, ok := apiStats["total_requests"].(uint64); ok {
-			w.Write([]byte(fmt.Sprintf("quant_api_total_requests %d\n", totalRequests)))
-		}
-
-		w.Write([]byte("# HELP quant_api_total_errors Total API errors\n"))
-		w.Write([]byte("# TYPE quant_api_total_errors counter\n"))
-		if totalErrors, ok := apiStats["total_errors"].(uint64); ok {
-			w.Write([]byte(fmt.Sprintf("quant_api_total_errors %d\n", totalErrors)))
-		}
-
-		w.Write([]byte("# HELP quant_api_error_rate API error rate\n"))
-		w.Write([]byte("# TYPE quant_api_error_rate gauge\n"))
-		if errorRate, ok := apiStats["error_rate"].(float64); ok {
-			w.Write([]byte(fmt.Sprintf("quant_api_error_rate %f\n", errorRate)))
-		}
-	}
-
-	if tradeStats, ok := allMetrics["trade_stats"].(map[string]interface{}); ok {
-		w.Write([]byte("# HELP quant_trade_count Total trade count\n"))
-		w.Write([]byte("# TYPE quant_trade_count counter\n"))
-		if tradeCount, ok := tradeStats["trade_count"].(int); ok {
-			w.Write([]byte(fmt.Sprintf("quant_trade_count %d\n", tradeCount)))
-		}
-
-		w.Write([]byte("# HELP quant_total_pnl Total PnL\n"))
-		w.Write([]byte("# TYPE quant_total_pnl gauge\n"))
-		if totalPnL, ok := tradeStats["total_pnl"].(float64); ok {
-			w.Write([]byte(fmt.Sprintf("quant_total_pnl %f\n", totalPnL)))
-		}
-
-		w.Write([]byte("# HELP quant_win_rate Win rate\n"))
-		w.Write([]byte("# TYPE quant_win_rate gauge\n"))
-		if winRate, ok := tradeStats["win_rate"].(float64); ok {
-			w.Write([]byte(fmt.Sprintf("quant_win_rate %f\n", winRate)))
-		}
+	output := prom.FormatPrometheus()
+	if output != "" {
+		w.Write([]byte(output))
 	}
 }

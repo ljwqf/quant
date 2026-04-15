@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,22 @@ import (
 	"go.uber.org/zap"
 )
 
+type PositionRepository interface {
+	Upsert(position *PositionRecord) error
+	Delete(strategy, symbol string) error
+	ListByStrategy(strategy string) ([]*PositionRecord, error)
+	ListAll() ([]*PositionRecord, error)
+}
+
+type PositionRecord struct {
+	Strategy   string
+	Symbol     string
+	Side       string
+	Size       float64
+	EntryPrice float64
+	OrderID    string
+}
+
 type Engine struct {
 	exchange          exchange.Exchange
 	riskEngine        *risk.Engine
@@ -25,13 +42,23 @@ type Engine struct {
 	takeProfitManager *TakeProfitManager
 	bayesianAllocator *strategy.OnlineBayesianAllocator
 	stateStore        StateStore
+	positionRepo      PositionRepository
 	smartRouteConfig  SmartRouteConfig
 	rebalanceConfig   RebalanceConfig
 	orders            map[string]*types.Order
+	algoOrders        map[string]*types.AlgoOrder
 	strategyPositions map[string]map[string]*strategyPosition
 	metrics           map[string]interface{}
 	mutex             sync.RWMutex
 	strategyMutex     sync.RWMutex
+	tpMonitorStop     chan struct{}
+	orderMonitorStop  chan struct{}
+
+	// 信号去重防护
+	signalDedupCooldown time.Duration
+	lastSignalTime      map[string]time.Time // key: "strategy:symbol:side"
+	pendingOrders       map[string][]string  // key: "strategy:symbol:side" → orderIDs
+	closingPositions    map[string]time.Time // key: "strategy:symbol" → last close signal time
 }
 
 type EngineConfig struct {
@@ -162,8 +189,13 @@ func NewEngine(ex exchange.Exchange, riskEngine *risk.Engine, strategyEngine *st
 		smartRouteConfig:  defaultSmartRouteConfig(),
 		rebalanceConfig:   defaultRebalanceConfig(),
 		orders:            make(map[string]*types.Order),
+		algoOrders:        make(map[string]*types.AlgoOrder),
 		strategyPositions: make(map[string]map[string]*strategyPosition),
 		metrics:           make(map[string]interface{}),
+		signalDedupCooldown: 60 * time.Second,
+		lastSignalTime:      make(map[string]time.Time),
+		pendingOrders:       make(map[string][]string),
+		closingPositions:    make(map[string]time.Time),
 	}
 }
 
@@ -176,8 +208,13 @@ func NewEngineWithConfig(ex exchange.Exchange, riskEngine *risk.Engine, strategy
 		smartRouteConfig:  defaultSmartRouteConfig(),
 		rebalanceConfig:   defaultRebalanceConfig(),
 		orders:            make(map[string]*types.Order),
+		algoOrders:        make(map[string]*types.AlgoOrder),
 		strategyPositions: make(map[string]map[string]*strategyPosition),
 		metrics:           make(map[string]interface{}),
+		signalDedupCooldown: 60 * time.Second,
+		lastSignalTime:      make(map[string]time.Time),
+		pendingOrders:       make(map[string][]string),
+		closingPositions:    make(map[string]time.Time),
 	}
 
 	// 默认启用策略级止盈
@@ -208,6 +245,10 @@ func NewEngineWithConfig(ex exchange.Exchange, riskEngine *risk.Engine, strategy
 
 func (e *Engine) SetStateStore(store StateStore) {
 	e.stateStore = store
+}
+
+func (e *Engine) SetPositionRepository(repo PositionRepository) {
+	e.positionRepo = repo
 }
 
 func (e *Engine) SetAlertHandler(handler AlertHandler) {
@@ -401,6 +442,76 @@ func (e *Engine) ReconcileWithExchange() error {
 	return nil
 }
 
+// RestorePositionsFromDB 从数据库恢复活跃持仓（启动时快照缺失时的兜底）
+func (e *Engine) RestorePositionsFromDB() error {
+	if e.positionRepo == nil {
+		return nil
+	}
+
+	positions, err := e.positionRepo.ListAll()
+	if err != nil {
+		return err
+	}
+
+	if len(positions) == 0 {
+		return nil
+	}
+
+	logger.Info("从数据库恢复活跃持仓",
+		zap.Int("count", len(positions)),
+	)
+
+	for _, pos := range positions {
+		side := types.OrderSide(pos.Side)
+		e.strategyMutex.Lock()
+		positionsByStrategy, exists := e.strategyPositions[pos.Strategy]
+		if !exists {
+			positionsByStrategy = make(map[string]*strategyPosition)
+			e.strategyPositions[pos.Strategy] = positionsByStrategy
+		}
+		positionsByStrategy[pos.Symbol] = &strategyPosition{
+			Strategy:   pos.Strategy,
+			Symbol:     pos.Symbol,
+			Side:       side,
+			Size:       pos.Size,
+			EntryPrice: pos.EntryPrice,
+			MarkPrice:  pos.EntryPrice,
+			UpdatedAt:  time.Now(),
+		}
+		e.strategyMutex.Unlock()
+
+		// 同步到风控引擎
+		e.riskEngine.UpdatePosition(&types.Position{
+			Symbol:     pos.Symbol,
+			Side:       side,
+			Size:       pos.Size,
+			EntryPrice: pos.EntryPrice,
+			MarkPrice:  pos.EntryPrice,
+		})
+
+		// 通知策略
+		if e.strategyEngine != nil {
+			e.strategyEngine.NotifyPositionFilled(
+				pos.Strategy,
+				pos.Symbol,
+				side,
+				pos.EntryPrice,
+				pos.Size,
+			)
+		}
+
+		logger.Info("恢复持仓",
+			zap.String("strategy", pos.Strategy),
+			zap.String("symbol", pos.Symbol),
+			zap.String("side", string(side)),
+			zap.Float64("size", pos.Size),
+			zap.Float64("entry_price", pos.EntryPrice),
+		)
+	}
+
+	return nil
+}
+
 func defaultSmartRouteConfig() SmartRouteConfig {
 	return SmartRouteConfig{
 		OrderBookDepth:       defaultOrderBookDepth,
@@ -453,6 +564,29 @@ func (e *Engine) Execute(signal *types.Signal, accountBalance float64) (*types.O
 		return nil, risk.ErrInvalidSignal
 	}
 
+	// 再平衡等系统操作跳过去重检查
+	isSystemSignal := signal.Metadata != nil
+	if sigMeta, ok := signal.Metadata.(map[string]interface{}); ok && isSystemSignal {
+		if src, exists := sigMeta["source"].(string); exists && src == "rebalance_entry" {
+			return e.executeInternal(signal, accountBalance, "")
+		}
+	}
+
+	// 信号去重检查：防止同一策略短时间重复下单
+	dedupKey := signal.Strategy + ":" + signal.Symbol + ":" + string(signal.Type)
+	if !e.checkAndRecordSignal(dedupKey) {
+		logger.Warn("信号被去重拦截",
+			zap.String("strategy", signal.Strategy),
+			zap.String("symbol", signal.Symbol),
+			zap.String("type", string(signal.Type)),
+		)
+		return nil, nil
+	}
+
+	return e.executeInternal(signal, accountBalance, dedupKey)
+}
+
+func (e *Engine) executeInternal(signal *types.Signal, accountBalance float64, dedupKey string) (*types.OrderResult, error) {
 	// 确保策略已注册到BayesianAllocator（RegisterStrategy内部会检查是否已存在）
 	e.bayesianAllocator.RegisterStrategy(signal.Strategy, 1.0/3.0)
 
@@ -528,6 +662,11 @@ func (e *Engine) Execute(signal *types.Signal, accountBalance float64) (*types.O
 			}
 		}
 		e.trackOrder(result.OrderID, order, metadata)
+
+		// 跟踪待成交订单（用于信号去重防护）
+		if dedupKey != "" {
+			e.registerPendingOrder(dedupKey, result.OrderID)
+		}
 
 		e.riskEngine.IncrementTrade()
 		e.updateMetrics()
@@ -652,6 +791,19 @@ func (e *Engine) ClosePosition(symbol string, price float64) (*types.OrderResult
 }
 
 func (e *Engine) executeExitSignal(signal *types.Signal, accountBalance float64) (*types.Order, *types.OrderResult, error) {
+	// TOCTOU 防护：5 秒内同一策略对同交易对已发送过平仓信号则跳过
+	closeKey := signal.Strategy + ":" + signal.Symbol
+	e.mutex.RLock()
+	if lastClose, exists := e.closingPositions[closeKey]; exists && time.Since(lastClose) < 5*time.Second {
+		e.mutex.RUnlock()
+		logger.Info("平仓信号被 TOCTOU 防护拦截",
+			zap.String("strategy", signal.Strategy),
+			zap.String("symbol", signal.Symbol),
+		)
+		return nil, nil, nil
+	}
+	e.mutex.RUnlock()
+
 	positions, err := e.exchange.GetPositions()
 	if err != nil {
 		logger.Error("获取持仓失败",
@@ -697,6 +849,15 @@ func (e *Engine) executeExitSignal(signal *types.Signal, accountBalance float64)
 
 	result, err := e.exchange.PlaceOrder(order)
 	if err != nil {
+		// OKX 返回"无持仓可平"等错误时视为成功（已被其他途径平仓）
+		if isAlreadyClosedError(err) {
+			logger.Info("平仓时交易对方已无持仓（可能已被其他途径平仓）",
+				zap.String("strategy", signal.Strategy),
+				zap.String("symbol", signal.Symbol),
+				zap.Error(err),
+			)
+			return nil, nil, nil
+		}
 		logger.Error("创建平仓订单失败",
 			zap.String("strategy", signal.Strategy),
 			zap.String("symbol", signal.Symbol),
@@ -705,7 +866,22 @@ func (e *Engine) executeExitSignal(signal *types.Signal, accountBalance float64)
 		return nil, nil, err
 	}
 
+	// 标记已发送平仓信号
+	e.mutex.Lock()
+	e.closingPositions[closeKey] = time.Now()
+	e.mutex.Unlock()
+
 	return order, result, nil
+}
+
+// isAlreadyClosedError 判断是否为"无持仓可平"类错误
+func isAlreadyClosedError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "position") &&
+		(strings.Contains(msg, "close") ||
+			strings.Contains(msg, "available") ||
+			strings.Contains(msg, "not enough") ||
+			strings.Contains(msg, "no position"))
 }
 
 func (e *Engine) ExecuteWithTakeProfit(signal *types.Signal, accountBalance float64, takeProfitConfig *TakeProfitConfig) (*types.OrderResult, error) {
@@ -759,6 +935,68 @@ func (e *Engine) CancelOrder(orderID string) error {
 	return nil
 }
 
+// checkAndRecordSignal 信号去重检查：60 秒冷却 + 同策略同方向订单未成交则拦截
+func (e *Engine) checkAndRecordSignal(dedupKey string) bool {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	// 定期清理过期条目（每 100 次调用触发一次）
+	if len(e.lastSignalTime)%100 == 0 {
+		cutoff := time.Now().Add(-5 * time.Minute)
+		for k, v := range e.lastSignalTime {
+			if v.Before(cutoff) {
+				delete(e.lastSignalTime, k)
+			}
+		}
+		for k, v := range e.closingPositions {
+			if v.Before(cutoff) {
+				delete(e.closingPositions, k)
+			}
+		}
+	}
+
+	// 检查 1：冷却窗口
+	if lastTime, exists := e.lastSignalTime[dedupKey]; exists {
+		if time.Since(lastTime) < e.signalDedupCooldown {
+			return false
+		}
+	}
+
+	// 检查 2：同策略同方向是否有未成交订单
+	if pendingList, exists := e.pendingOrders[dedupKey]; exists && len(pendingList) > 0 {
+		return false
+	}
+
+	// 记录信号
+	e.lastSignalTime[dedupKey] = time.Now()
+	return true
+}
+
+// registerPendingOrder 跟踪新下单的订单到待成交列表
+func (e *Engine) registerPendingOrder(dedupKey, orderID string) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	e.pendingOrders[dedupKey] = append(e.pendingOrders[dedupKey], orderID)
+}
+
+// clearPendingOrder 订单成交或取消后从待成交列表移除
+func (e *Engine) clearPendingOrder(dedupKey, orderID string) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	list := e.pendingOrders[dedupKey]
+	for i, id := range list {
+		if id == orderID {
+			e.pendingOrders[dedupKey] = append(list[:i], list[i+1:]...)
+			break
+		}
+	}
+	if len(e.pendingOrders[dedupKey]) == 0 {
+		delete(e.pendingOrders, dedupKey)
+	}
+}
+
 func (e *Engine) GetOrders() map[string]*types.Order {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -787,6 +1025,38 @@ func (e *Engine) GetOrderCount() int {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 	return len(e.orders)
+}
+
+// TrackExternalOrder 将交易所侧发现的孤儿订单注入本地追踪
+func (e *Engine) TrackExternalOrder(order *types.Order) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+	if _, ok := e.orders[order.ID]; !ok {
+		order.Metadata = map[string]interface{}{
+			"source": "reconciler",
+		}
+		e.orders[order.ID] = order
+	}
+}
+
+// GetAlgoOrders 获取本地追踪的算法单
+func (e *Engine) GetAlgoOrders() map[string]*types.AlgoOrder {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+	result := make(map[string]*types.AlgoOrder)
+	for k, v := range e.algoOrders {
+		result[k] = v
+	}
+	return result
+}
+
+// TrackExternalAlgoOrder 将交易所侧发现的孤儿算法单注入本地追踪
+func (e *Engine) TrackExternalAlgoOrder(algo *types.AlgoOrder) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+	if _, ok := e.algoOrders[algo.AlgoID]; !ok {
+		e.algoOrders[algo.AlgoID] = algo
+	}
 }
 
 func (e *Engine) GetMetrics() map[string]interface{} {
@@ -930,6 +1200,59 @@ func (e *Engine) updateMetrics() {
 	e.metrics["timestamp"] = time.Now()
 }
 
+// recordSlippage 记录滑点数据
+func (e *Engine) recordSlippage(slippage float64, symbol string, side types.OrderSide) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	// 累计滑点统计
+	totalCount, _ := e.metrics["slippage_count"].(int)
+	totalCount++
+	e.metrics["slippage_count"] = totalCount
+
+	// 更新最大滑点
+	maxSlippage, _ := e.metrics["max_slippage"].(float64)
+	if slippage > maxSlippage {
+		e.metrics["max_slippage"] = slippage
+	}
+
+	// 更新平均滑点
+	avgSlippage, _ := e.metrics["avg_slippage"].(float64)
+	e.metrics["avg_slippage"] = (avgSlippage*float64(totalCount-1) + slippage) / float64(totalCount)
+
+	// 按交易对统计
+	symbolKey := "slippage_" + symbol
+	symbolSlippage, _ := e.metrics[symbolKey].(float64)
+	symbolCount, _ := e.metrics[symbolKey+"_count"].(int)
+	symbolCount++
+	e.metrics[symbolKey+"_count"] = symbolCount
+	e.metrics[symbolKey] = (symbolSlippage*float64(symbolCount-1) + slippage) / float64(symbolCount)
+
+	// 滑点偏高告警
+	if slippage > 0.01 { // 超过 1%
+		logger.Warn("滑点异常偏高",
+			zap.String("symbol", symbol),
+			zap.String("side", string(side)),
+			zap.Float64("slippage", slippage*100),
+		)
+	}
+}
+
+// GetSlippageMetrics 获取滑点指标
+func (e *Engine) GetSlippageMetrics() map[string]interface{} {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	result := make(map[string]interface{})
+	for k, v := range e.metrics {
+		if k == "slippage_count" || k == "max_slippage" || k == "avg_slippage" ||
+			(strings.HasPrefix(k, "slippage_") && !strings.HasSuffix(k, "_count")) {
+			result[k] = v
+		}
+	}
+	return result
+}
+
 func (e *Engine) MonitorOrders() {
 	e.mutex.RLock()
 	orderIDs := make([]string, 0, len(e.orders))
@@ -1018,6 +1341,15 @@ func (e *Engine) processObservedOrderFill(orderID string, localOrder *types.Orde
 		return 0
 	}
 
+	// 滑点记录：预期价格 vs 实际成交价
+	if localOrder != nil {
+		expectedPrice := localOrder.Price
+		if expectedPrice > 0 && filledPrice > 0 {
+			slippage := math.Abs(filledPrice-expectedPrice) / expectedPrice
+			e.recordSlippage(slippage, exchangeOrder.Symbol, exchangeOrder.Side)
+		}
+	}
+
 	if strategyName != "" && e.strategyEngine != nil {
 		if isExitOrder {
 			trackedPosition, pnl, fullyClosed := e.applyStrategyExitFill(strategyName, exchangeOrder.Symbol, filledPrice, deltaFilled)
@@ -1064,8 +1396,8 @@ func (e *Engine) processObservedOrderFill(orderID string, localOrder *types.Orde
 		e.riskEngine.RemovePosition(exchangeOrder.Symbol)
 	}
 
-	// 异步同步持仓状态，作为兜底
-	go e.syncRiskPosition(exchangeOrder.Symbol)
+	// 同步风控持仓状态
+	e.syncRiskPosition(exchangeOrder.Symbol)
 
 	if isExitOrder && e.takeProfitManager != nil {
 		if e.riskEngine.GetPosition(exchangeOrder.Symbol) == nil {
@@ -1103,6 +1435,15 @@ func (e *Engine) handleOrderCompleted(orderID string, orderInfo *types.Order) {
 	e.mutex.Lock()
 	delete(e.orders, orderID)
 	e.mutex.Unlock()
+
+	// 清除待成交订单跟踪
+	if strategy, ok := orderInfo.Metadata["strategy"].(string); ok {
+		if signalType, ok := orderInfo.Metadata["signal_type"].(string); ok {
+			dedupKey := strategy + ":" + orderInfo.Symbol + ":" + signalType
+			e.clearPendingOrder(dedupKey, orderID)
+		}
+	}
+
 	e.syncRiskPosition(orderInfo.Symbol)
 
 	logger.Info("订单完成",
@@ -1173,6 +1514,12 @@ func (e *Engine) executeTakeProfitSignal(signal *TakeProfitSignal, state *Positi
 		zap.Float64("profit_percent", signal.ProfitPercent),
 		zap.String("order_id", result.OrderID),
 	)
+
+	e.trackOrder(result.OrderID, order, map[string]interface{}{
+		"take_profit_trigger": signal.TriggerType,
+		"take_profit_reason":  signal.Reason,
+		"tier_level":          signal.TierLevel,
+	})
 
 	if signal.TriggerType == "fixed_take_profit" ||
 		(signal.TriggerType == "trailing_take_profit" && state.ClosedPercent == 0) ||
@@ -1400,6 +1747,38 @@ func (e *Engine) recordStrategyEntryFill(strategyName, symbol string, side types
 		EntryPrice: entryPrice,
 		MarkPrice:  entryPrice,
 	})
+
+	// 持久化活跃持仓记录
+	if e.positionRepo != nil {
+		orderID := ""
+		e.mutex.RLock()
+		for _, order := range e.orders {
+			if order != nil && order.Metadata != nil {
+				if s, ok := order.Metadata["strategy"].(string); ok && s == strategyName {
+					if sym, ok := order.Metadata["symbol"].(string); ok && sym == symbol {
+						orderID = order.ID
+						break
+					}
+				}
+			}
+		}
+		e.mutex.RUnlock()
+
+		if err := e.positionRepo.Upsert(&PositionRecord{
+			Strategy:   strategyName,
+			Symbol:     symbol,
+			Side:       string(side),
+			Size:       size,
+			EntryPrice: entryPrice,
+			OrderID:    orderID,
+		}); err != nil {
+			logger.Warn("持久化活跃持仓记录失败",
+				zap.String("strategy", strategyName),
+				zap.String("symbol", symbol),
+				zap.Error(err),
+			)
+		}
+	}
 }
 
 func (e *Engine) applyStrategyExitFill(strategyName, symbol string, exitPrice, filledQty float64) (*strategyPosition, float64, bool) {
@@ -1432,6 +1811,18 @@ func (e *Engine) applyStrategyExitFill(strategyName, symbol string, exitPrice, f
 		if len(positionsByStrategy) == 0 {
 			delete(e.strategyPositions, strategyName)
 		}
+
+		// 持久化删除活跃持仓记录
+		if e.positionRepo != nil {
+			if err := e.positionRepo.Delete(strategyName, symbol); err != nil {
+				logger.Warn("删除活跃持仓记录失败",
+					zap.String("strategy", strategyName),
+					zap.String("symbol", symbol),
+					zap.Error(err),
+				)
+			}
+		}
+
 		return &previous, pnl, true
 	}
 
@@ -2622,12 +3013,18 @@ func (e *Engine) GetTakeProfitConfig() *TakeProfitConfig {
 }
 
 func (e *Engine) StartTakeProfitMonitor() {
+	e.tpMonitorStop = make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			e.MonitorTakeProfit()
+		for {
+			select {
+			case <-e.tpMonitorStop:
+				return
+			case <-ticker.C:
+				e.MonitorTakeProfit()
+			}
 		}
 	}()
 
@@ -2635,15 +3032,37 @@ func (e *Engine) StartTakeProfitMonitor() {
 }
 
 func (e *Engine) StartOrderMonitor() {
+	e.orderMonitorStop = make(chan struct{})
 	go func() {
 		// 缩短轮询间隔至 500 毫秒，提高订单状态更新及时性
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			e.MonitorOrders()
+		for {
+			select {
+			case <-e.orderMonitorStop:
+				return
+			case <-ticker.C:
+				e.MonitorOrders()
+			}
 		}
 	}()
 
 	logger.Info("订单监控已启动（轮询间隔：500 毫秒）")
+}
+
+func (e *Engine) StopTakeProfitMonitor() {
+	if e.tpMonitorStop != nil {
+		close(e.tpMonitorStop)
+		e.tpMonitorStop = nil
+		logger.Info("止盈监控已停止")
+	}
+}
+
+func (e *Engine) StopOrderMonitor() {
+	if e.orderMonitorStop != nil {
+		close(e.orderMonitorStop)
+		e.orderMonitorStop = nil
+		logger.Info("订单监控已停止")
+	}
 }

@@ -177,13 +177,56 @@ func (a *Analyzer) AnalyzePosition(ctx context.Context, symbol string, positionD
 		return nil, fmt.Errorf("大模型客户端未初始化")
 	}
 
-	tradeData := &TradeDecisionData{
-		Symbol:          symbol,
-		Side:            "hold",
-		MarketCondition: "existing_position",
+	// 提取持仓数据
+	side := fmt.Sprintf("%v", positionData["side"])
+	entryPrice, _ := positionData["entry_price"].(float64)
+	markPrice, _ := positionData["mark_price"].(float64)
+	size, _ := positionData["size"].(float64)
+	unrealizedPnL, _ := positionData["unrealized_pnl"].(float64)
+	leverage, _ := positionData["leverage"].(int)
+	pnlPercent, _ := positionData["pnl_percent"].(float64)
+	liquidation, _ := positionData["liquidation"].(float64)
+
+	systemPrompt := `你是一位资深的加密货币持仓风险分析师，专注于持仓评估和风险管理。
+请基于提供的持仓数据，进行全面的风险评估并给出明确的持仓建议。
+
+分析要求：
+1. 评估当前持仓的风险水平
+2. 分析盈亏状况和趋势
+3. 评估杠杆风险
+4. 评估清算风险（距离清算价格的百分比）
+5. 考虑市场环境对当前持仓的影响
+6. 给出明确的持仓建议（继续持有、减仓、平仓、调整止损）
+
+输出格式：
+- 风险等级：[低/中/高]
+- 持仓评级：[优秀/良好/一般/差]
+- 盈亏评估：[描述]
+- 杠杆风险：[描述]
+- 清算风险：[描述]
+- 最终建议：[持有/减仓/平仓/调整止损]
+- 详细分析：[具体分析内容]`
+
+	userPrompt := fmt.Sprintf(`请分析以下持仓：
+
+交易对：%s
+持仓方向：%s
+持仓数量：%.4f
+入场价格：%.2f
+标记价格：%.2f
+杠杆倍数：%dx
+未实现盈亏：%.2f USDT
+盈亏百分比：%.2f%%
+清算价格：%.2f
+
+请进行全面的持仓风险评估。`,
+		symbol, side, size, entryPrice, markPrice, leverage, unrealizedPnL, pnlPercent, liquidation)
+
+	template := &PromptTemplate{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
 	}
 
-	template := GetTradeDecisionPrompt(tradeData)
 	messages := BuildMessages(template)
 
 	req := &providers.ChatRequest{
@@ -202,7 +245,7 @@ func (a *Analyzer) AnalyzePosition(ctx context.Context, symbol string, positionD
 	parsed := ParseAnalysisResult(resp.Content)
 	summary := parsed["最终建议"]
 	if summary == "" {
-		summary = parsed["交易评级"]
+		summary = parsed["持仓评级"]
 	}
 	riskLevel := parsed["风险等级"]
 	if riskLevel == "" {

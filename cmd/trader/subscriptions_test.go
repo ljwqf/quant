@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,6 +53,14 @@ func (s *subscriptionExchangeStub) GetOrderBook(symbol string, depth int) (*type
 func (s *subscriptionExchangeStub) SetLeverage(symbol string, leverage int, marginMode string) error {
 	return nil
 }
+func (s *subscriptionExchangeStub) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return &types.AlgoOrderResult{AlgoID: "algo_" + order.Symbol}, nil
+}
+func (s *subscriptionExchangeStub) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (s *subscriptionExchangeStub) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (s *subscriptionExchangeStub) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
 
 type subscriptionStrategyStub struct{}
 
@@ -99,4 +108,68 @@ func TestSubscribeStrategyMarketDataDispatchesEachSignalOnce(t *testing.T) {
 
 	assert.Len(t, executed, 3)
 	assert.Equal(t, []string{"BTC-USDT:buy", "BTC-USDT:buy", "BTC-USDT:buy"}, executed)
+}
+
+func TestDispatchStrategyResultNilResult(t *testing.T) {
+	called := false
+	dispatchStrategyResult(nil, func(s *types.Signal) { called = true }, func(err error) { called = true })
+	assert.False(t, called)
+}
+
+func TestDispatchStrategyResultDispatchesSignals(t *testing.T) {
+	signals := []*types.Signal{
+		{Symbol: "BTC-USDT", Type: types.SignalTypeBuy},
+		{Symbol: "ETH-USDT", Type: types.SignalTypeSell},
+	}
+
+	received := make([]*types.Signal, 0, 2)
+	dispatchStrategyResult(&strategy.StrategyResult{Signals: signals}, func(s *types.Signal) {
+		received = append(received, s)
+	}, func(err error) {
+		t.Fatal("should not call logError")
+	})
+
+	require.Len(t, received, 2)
+	assert.Equal(t, "BTC-USDT", received[0].Symbol)
+	assert.Equal(t, "ETH-USDT", received[1].Symbol)
+}
+
+func TestDispatchStrategyResultLogsErrors(t *testing.T) {
+	testErr := fmt.Errorf("test error")
+	received := make([]error, 0, 1)
+	dispatchStrategyResult(&strategy.StrategyResult{Errors: []error{testErr}}, func(s *types.Signal) {
+		t.Fatal("should not call executeSignal")
+	}, func(err error) {
+		received = append(received, err)
+	})
+
+	require.Len(t, received, 1)
+	assert.Equal(t, testErr, received[0])
+}
+
+func TestDispatchStrategyResultSkipsNilSignalsAndErrors(t *testing.T) {
+	signals := []*types.Signal{nil, {Symbol: "BTC-USDT", Type: types.SignalTypeBuy}, nil}
+	errs := []error{nil, fmt.Errorf("real error"), nil}
+
+	signalCount := 0
+	errorCount := 0
+	dispatchStrategyResult(&strategy.StrategyResult{Signals: signals, Errors: errs},
+		func(s *types.Signal) { signalCount++ },
+		func(err error) { errorCount++ },
+	)
+
+	assert.Equal(t, 1, signalCount)
+	assert.Equal(t, 1, errorCount)
+}
+
+func TestDispatchStrategyResultEmptySignalsAndErrors(t *testing.T) {
+	signalCount := 0
+	errorCount := 0
+	dispatchStrategyResult(&strategy.StrategyResult{},
+		func(s *types.Signal) { signalCount++ },
+		func(err error) { errorCount++ },
+	)
+
+	assert.Equal(t, 0, signalCount)
+	assert.Equal(t, 0, errorCount)
 }

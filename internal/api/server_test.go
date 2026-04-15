@@ -717,6 +717,14 @@ func (m *apiManualTradeExchange) SetLeverage(symbol string, leverage int, margin
 	m.leverageCalls = append(m.leverageCalls, apiManualLeverageCall{Symbol: symbol, Leverage: leverage, MarginMode: marginMode})
 	return nil
 }
+func (m *apiManualTradeExchange) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return &types.AlgoOrderResult{AlgoID: "algo_" + order.Symbol}, nil
+}
+func (m *apiManualTradeExchange) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (m *apiManualTradeExchange) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (m *apiManualTradeExchange) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
 
 func newAPIManualTradeServer(t *testing.T) (*Server, *apiManualTradeExchange) {
 	t.Helper()

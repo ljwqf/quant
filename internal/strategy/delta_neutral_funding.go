@@ -219,6 +219,39 @@ func (e *DeltaNeutralFundingPro) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		e.params[k] = v
 	}
+	if symbol, ok := params["spot_symbol"].(string); ok {
+		e.spotSymbol = symbol
+	}
+	if symbol, ok := params["perp_symbol"].(string); ok {
+		e.perpSymbol = symbol
+	}
+	if value, ok := params["fund_usage_percent"].(float64); ok && value > 0 {
+		e.fundUsagePercent = value
+	}
+	if value, ok := params["rebalance_threshold"].(float64); ok && value >= 0 {
+		e.rebalanceThreshold = value
+	}
+	if value, ok := params["basis_circuit_breaker"].(float64); ok && value >= 0 {
+		e.basisCircuitBreaker = value
+	}
+	if target, ok := params["target_hedge_ratio"].(float64); ok && target > 0 {
+		e.targetHedgeRatio = target
+	}
+	if tolerance, ok := params["hedge_ratio_tolerance"].(float64); ok && tolerance >= 0 {
+		e.hedgeRatioTolerance = tolerance
+	}
+	if value, ok := params["daily_loss_limit"].(float64); ok && value >= 0 {
+		e.dailyLossLimit = value
+	}
+	if value, ok := params["margin_buffer_percent"].(float64); ok && value >= 0 {
+		e.marginBufferPercent = value
+	}
+	if value, ok := params["settlement_window_before"].(time.Duration); ok && value >= 0 {
+		e.settlementWindowBefore = value
+	}
+	if value, ok := params["settlement_window_after"].(time.Duration); ok && value >= 0 {
+		e.settlementWindowAfter = value
+	}
 }
 
 func (e *DeltaNeutralFundingPro) GetMetrics() map[string]interface{} {

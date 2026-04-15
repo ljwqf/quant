@@ -197,8 +197,7 @@ func (e *Engine) OnTick(tick *types.Tick) *StrategyResult {
 		}
 		if signal != nil {
 			signal.Strategy = name
-			// TODO: 后续添加Weight字段到types.Signal结构
-			// signal.Weight = config.Weight
+			signal.Weight = config.Weight
 			result.Signals = append(result.Signals, signal)
 		}
 	}
@@ -229,8 +228,7 @@ func (e *Engine) OnBar(bar *types.Bar) *StrategyResult {
 		}
 		if signal != nil {
 			signal.Strategy = name
-			// TODO: 后续添加Weight字段到types.Signal结构
-			// signal.Weight = config.Weight
+			signal.Weight = config.Weight
 			result.Signals = append(result.Signals, signal)
 		}
 	}
@@ -261,8 +259,7 @@ func (e *Engine) OnOrderBook(orderBook *types.OrderBook) *StrategyResult {
 		}
 		if signal != nil {
 			signal.Strategy = name
-			// TODO: 后续添加Weight字段到types.Signal结构
-			// signal.Weight = config.Weight
+			signal.Weight = config.Weight
 			result.Signals = append(result.Signals, signal)
 		}
 	}

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
+	"go.uber.org/zap"
 )
 
 // PlaceOrder 下单
@@ -55,13 +57,17 @@ func (c *Client) GetOrders(symbol string, limit int) ([]*types.Order, error) {
 // placeOrder 下单
 func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) {
 	// 构建下单请求
+	tdMode := r.config.MarginMode
+	if tdMode == "" {
+		tdMode = "isolated" // 默认逐仓
+	}
 	data := map[string]interface{}{
-		"instId": order.Symbol,
-		"tdMode": "isolated", // 隔离保证金模式
-		"side":   string(order.Side),
+		"instId":  order.Symbol,
+		"tdMode":  tdMode,
+		"side":    string(order.Side),
 		"ordType": string(order.Type),
-		"sz":     fmt.Sprintf("%f", order.Quantity),
-		"lever":  fmt.Sprintf("%d", order.Leverage),
+		"sz":      fmt.Sprintf("%f", order.Quantity),
+		"lever":   fmt.Sprintf("%d", order.Leverage),
 	}
 
 	// 限价单需要价格
@@ -218,12 +224,30 @@ func (r *restClient) getOrder(orderID string) (*types.Order, error) {
 	}
 
 	// 构建订单信息
-	quantity, _ := parseFloat(response.Data[0].Quantity)
-	price, _ := parseFloat(response.Data[0].Price)
-	averagePrice, _ := parseFloat(response.Data[0].AveragePrice)
-	filledQty, _ := parseFloat(response.Data[0].FilledQty)
-	leverage, _ := parseInt(response.Data[0].Leverage)
-	timestamp, _ := parseInt(response.Data[0].Timestamp)
+	quantity, err := parseFloat(response.Data[0].Quantity)
+	if err != nil {
+		logger.Warn("解析订单数量失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	price, err := parseFloat(response.Data[0].Price)
+	if err != nil {
+		logger.Warn("解析订单价格失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	averagePrice, err := parseFloat(response.Data[0].AveragePrice)
+	if err != nil {
+		logger.Warn("解析订单均价失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	filledQty, err := parseFloat(response.Data[0].FilledQty)
+	if err != nil {
+		logger.Warn("解析已成交数量失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	leverage, err := parseInt(response.Data[0].Leverage)
+	if err != nil {
+		logger.Warn("解析杠杆失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	timestamp, err := parseInt(response.Data[0].Timestamp)
+	if err != nil {
+		logger.Warn("解析时间戳失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
 
 	status := types.OrderStatusPending
 	switch response.Data[0].Status {
@@ -312,12 +336,30 @@ func (r *restClient) getOrders(symbol string, limit int) ([]*types.Order, error)
 	// 构建订单列表
 	orders := make([]*types.Order, 0, len(response.Data))
 	for _, data := range response.Data {
-		quantity, _ := parseFloat(data.Quantity)
-		price, _ := parseFloat(data.Price)
-		averagePrice, _ := parseFloat(data.AveragePrice)
-		filledQty, _ := parseFloat(data.FilledQty)
-		leverage, _ := parseInt(data.Leverage)
-		timestamp, _ := parseInt(data.Timestamp)
+		quantity, err := parseFloat(data.Quantity)
+		if err != nil {
+			logger.Warn("解析订单数量失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		price, err := parseFloat(data.Price)
+		if err != nil {
+			logger.Warn("解析订单价格失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		averagePrice, err := parseFloat(data.AveragePrice)
+		if err != nil {
+			logger.Warn("解析订单均价失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		filledQty, err := parseFloat(data.FilledQty)
+		if err != nil {
+			logger.Warn("解析已成交数量失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		leverage, err := parseInt(data.Leverage)
+		if err != nil {
+			logger.Warn("解析杠杆失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		timestamp, err := parseInt(data.Timestamp)
+		if err != nil {
+			logger.Warn("解析时间戳失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
 
 		status := types.OrderStatusPending
 		switch data.Status {

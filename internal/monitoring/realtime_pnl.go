@@ -27,6 +27,8 @@ type RealTimePnL struct {
 	isSimulationMode       bool
 	simulationRequestCount int
 	maxSimulationRequests  int
+	circuitBreakerActive   bool          // 熔断器：网络故障时暂停请求
+	circuitBreakerUntil    time.Time     // 熔断截止时间
 }
 
 // PnLPoint P&L数据点
@@ -89,6 +91,15 @@ func (r *RealTimePnL) monitorLoop() {
 	for {
 		select {
 		case <-ticker.C:
+			// 熔断器检查：网络故障时暂停请求，避免无限重试
+			if r.circuitBreakerActive && time.Now().Before(r.circuitBreakerUntil) {
+				continue
+			}
+			if r.circuitBreakerActive && time.Now().After(r.circuitBreakerUntil) {
+				r.circuitBreakerActive = false
+				logger.Info("P&L监控熔断器已解除")
+			}
+
 			// 如果是模拟模式或者连续错误较少，才尝试更新
 			if r.isSimulationMode || r.consecutiveErrors < 10 {
 				r.updatePnL()
@@ -142,16 +153,42 @@ func (r *RealTimePnL) updatePnL() {
 				zap.Int("max_requests", r.maxSimulationRequests),
 			)
 		} else {
-			logger.Error("获取账户信息失败",
-				zap.Error(err),
+			// 仅在前几次错误时打印完整日志，避免刷屏
+			if r.consecutiveErrors <= 3 {
+				logger.Error("获取账户信息失败",
+					zap.Error(err),
+					zap.Int("consecutive_errors", r.consecutiveErrors),
+				)
+			} else if r.consecutiveErrors%20 == 0 {
+				// 每20次错误打印一次摘要
+				logger.Warn("获取账户信息持续失败",
+					zap.Error(err),
+					zap.Int("consecutive_errors", r.consecutiveErrors),
+					zap.Bool("circuit_breaker_active", r.circuitBreakerActive),
+				)
+			}
+		}
+
+		// 连续错误达到阈值时激活熔断器
+		if r.consecutiveErrors >= 20 && !r.circuitBreakerActive {
+			// 指数退避：初始5分钟，之后逐步增加
+			backoffDuration := 5 * time.Minute
+			r.circuitBreakerUntil = time.Now().Add(backoffDuration)
+			r.circuitBreakerActive = true
+			logger.Warn("P&L监控触发熔断，暂停请求",
 				zap.Int("consecutive_errors", r.consecutiveErrors),
+				zap.Duration("backoff", backoffDuration),
 			)
 		}
 		return
 	}
 
-	// 成功，重置错误计数
+	// 成功，重置错误计数和熔断器
 	r.consecutiveErrors = 0
+	if r.circuitBreakerActive {
+		r.circuitBreakerActive = false
+		logger.Info("P&L监控熔断器已解除")
+	}
 	if r.isSimulationMode {
 		r.simulationRequestCount++
 		logger.Info("模拟模式API请求成功",

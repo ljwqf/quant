@@ -150,3 +150,87 @@ func TestParseAnalysisResultMultiline(t *testing.T) {
 	assert.Equal(t, "关注 DeFi 领域", result["投资建议"])
 	assert.Contains(t, result["详细分析"], "DeFi 项目表现活跃")
 }
+
+func TestGetOrderAnalysisPrompt(t *testing.T) {
+	data := &OrderData{
+		Symbol:       "BTC-USDT",
+		AnalysisType: "active",
+		TimeRange:    "24h",
+		Orders: []map[string]interface{}{
+			{"id": "1", "side": "buy", "price": 50000.0},
+			{"id": "2", "side": "sell", "price": 51000.0},
+		},
+	}
+
+	prompt := GetOrderAnalysisPrompt(data)
+	assert.NotNil(t, prompt)
+	assert.NotEmpty(t, prompt.SystemPrompt)
+	assert.NotEmpty(t, prompt.UserPrompt)
+	assert.Contains(t, prompt.UserPrompt, "BTC-USDT")
+	assert.Contains(t, prompt.UserPrompt, "active")
+	assert.Contains(t, prompt.UserPrompt, "24h")
+	assert.Contains(t, prompt.UserPrompt, "2") // order count
+}
+
+func TestGetOrderAnalysisPromptEmptySymbol(t *testing.T) {
+	data := &OrderData{
+		AnalysisType: "historical",
+		TimeRange:    "7d",
+		Orders:       []map[string]interface{}{},
+	}
+
+	prompt := GetOrderAnalysisPrompt(data)
+	assert.NotNil(t, prompt)
+	assert.Contains(t, prompt.UserPrompt, "historical")
+	assert.Contains(t, prompt.UserPrompt, "0") // zero order count
+}
+
+func TestParseAnalysisResultNoColon(t *testing.T) {
+	content := `This is just plain text without any colons.
+It should return an empty map.`
+	result := ParseAnalysisResult(content)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+}
+
+func TestParseAnalysisResultMixedColons(t *testing.T) {
+	content := "风险等级：高\nSome text without colon.\n最终建议：减仓\nMore text here."
+	result := ParseAnalysisResult(content)
+	assert.Contains(t, result["风险等级"], "高")
+	assert.Contains(t, result["风险等级"], "Some text without colon.")
+	assert.Contains(t, result["最终建议"], "减仓")
+	assert.Contains(t, result["最终建议"], "More text here.")
+}
+
+func TestParseAnalysisResultFullWidthColon(t *testing.T) {
+	// The parser uses full-width colon "："
+	content := "key：value"
+	result := ParseAnalysisResult(content)
+	assert.Equal(t, "value", result["key"])
+}
+
+func TestParseAnalysisResultContinuationLines(t *testing.T) {
+	content := `详细分析：第一行
+第二行内容
+第三行内容
+其他字段：值`
+	result := ParseAnalysisResult(content)
+	assert.Contains(t, result["详细分析"], "第一行")
+	assert.Contains(t, result["详细分析"], "第二行内容")
+	assert.Contains(t, result["详细分析"], "第三行内容")
+	assert.Equal(t, "值", result["其他字段"])
+}
+
+func TestPromptConstants(t *testing.T) {
+	assert.Equal(t, PromptType("technical_analysis"), PromptTypeTechnicalAnalysis)
+	assert.Equal(t, PromptType("news_analysis"), PromptTypeNewsAnalysis)
+	assert.Equal(t, PromptType("economic_analysis"), PromptTypeEconomicAnalysis)
+	assert.Equal(t, PromptType("trade_decision"), PromptTypeTradeDecision)
+}
+
+func TestAnalysisTypeConstants(t *testing.T) {
+	assert.Equal(t, AnalysisType("trade"), AnalysisTypeTrade)
+	assert.Equal(t, AnalysisType("position"), AnalysisTypePosition)
+	assert.Equal(t, AnalysisType("market"), AnalysisTypeMarket)
+	assert.Equal(t, AnalysisType("orders"), AnalysisTypeOrders)
+}

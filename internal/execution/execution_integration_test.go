@@ -269,6 +269,14 @@ func (s *flowExchangeStub) GetOrderBook(symbol string, depth int) (*types.OrderB
 func (s *flowExchangeStub) SetLeverage(symbol string, leverage int, marginMode string) error {
 	return nil
 }
+func (s *flowExchangeStub) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return &types.AlgoOrderResult{AlgoID: "algo_" + order.Symbol, Symbol: order.Symbol, Status: "active"}, nil
+}
+func (s *flowExchangeStub) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (s *flowExchangeStub) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (s *flowExchangeStub) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
 
 func (s *flowExchangeStub) applyFill(order *types.Order) {
 	existing := s.positions[order.Symbol]

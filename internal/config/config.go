@@ -111,6 +111,25 @@ type NotificationsConfig struct {
 	Telegram     TelegramConfig `mapstructure:"telegram"`
 	Discord      DiscordConfig  `mapstructure:"discord"`
 	Email        EmailConfig    `mapstructure:"email"`
+	DingTalk     DingTalkConfig `mapstructure:"dingtalk"`
+	WeCom        WeComConfig    `mapstructure:"wecom"`
+}
+
+// DingTalkConfig 钉钉通知配置
+type DingTalkConfig struct {
+	Enabled    bool     `mapstructure:"enabled"`
+	WebhookURL string   `mapstructure:"webhook_url"`
+	Secret     string   `mapstructure:"secret"`
+	AtMobiles  []string `mapstructure:"at_mobiles"`
+	AtAll      bool     `mapstructure:"at_all"`
+}
+
+// WeComConfig 企业微信通知配置
+type WeComConfig struct {
+	Enabled             bool     `mapstructure:"enabled"`
+	WebhookURL          string   `mapstructure:"webhook_url"`
+	MentionedList       []string `mapstructure:"mentioned_list"`
+	MentionedMobileList []string `mapstructure:"mentioned_mobile_list"`
 }
 
 // ConsoleConfig 控制台通知配置
@@ -169,6 +188,7 @@ type OKXConfig struct {
 	Timeout    time.Duration `mapstructure:"timeout"`
 	RetryCount int           `mapstructure:"retry_count"`
 	Simulated  bool          `mapstructure:"simulated"` // 是否使用模拟盘
+	MarginMode string        `mapstructure:"margin_mode"` // 交易模式：isolated(逐仓) / cross(全仓)，默认 isolated
 }
 
 // SymbolExposureLimit 品种风险敞口限制配置
@@ -200,6 +220,14 @@ type ExecutionConfig struct {
 	SmartRouting             SmartRoutingConfig         `mapstructure:"smart_routing"`
 	Rebalance                RebalanceActionConfig      `mapstructure:"rebalance"`
 	Allocator                BayesianAllocatorConfig    `mapstructure:"allocator"`
+	OrderReconciler          OrderReconcilerConfig      `mapstructure:"order_reconciler"`
+}
+
+// OrderReconcilerConfig 订单对账服务配置
+type OrderReconcilerConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	Symbols  []string      `mapstructure:"symbols"`
+	Interval time.Duration `mapstructure:"interval"`
 }
 
 // ExecutionPersistenceConfig 执行态持久化配置
@@ -360,6 +388,10 @@ type ServerConfig struct {
 	APIToken       string   `mapstructure:"api_token"`
 	TrustedProxies []string `mapstructure:"trusted_proxies"`
 	ForceToken     bool     `mapstructure:"force_token"`
+	TLSEnable      bool     `mapstructure:"tls_enable"`
+	TLSCertFile    string   `mapstructure:"tls_cert_file"`
+	TLSKeyFile     string   `mapstructure:"tls_key_file"`
+	IPWhitelist    []string `mapstructure:"ip_whitelist"`
 }
 
 // Load 加载配置

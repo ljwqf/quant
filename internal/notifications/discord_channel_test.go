@@ -172,10 +172,14 @@ func TestFormatDiscordEmbed(t *testing.T) {
 		embed := formatDiscordEmbed(notification)
 
 		assert.Len(t, embed.Fields, 4)
-		assert.Equal(t, "key1", embed.Fields[2].Name)
-		assert.Equal(t, "value1", embed.Fields[2].Value)
-		assert.Equal(t, "key2", embed.Fields[3].Name)
-		assert.Equal(t, "value2", embed.Fields[3].Value)
+		// Map iteration order is non-deterministic, check that both metadata fields exist
+		metadataFields := embed.Fields[2:]
+		names := make(map[string]string)
+		for _, f := range metadataFields {
+			names[f.Name] = f.Value
+		}
+		assert.Equal(t, "value1", names["key1"])
+		assert.Equal(t, "value2", names["key2"])
 	})
 
 	t.Run("包含Footer", func(t *testing.T) {

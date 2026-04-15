@@ -24,6 +24,7 @@ import (
 	"github.com/ljwqf/quant/internal/notifications"
 	"github.com/ljwqf/quant/internal/risk"
 	"github.com/ljwqf/quant/internal/storage"
+	"github.com/ljwqf/quant/internal/storage/repository"
 	"github.com/ljwqf/quant/internal/strategy"
 	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
@@ -49,23 +50,20 @@ func buildSmartFilterRefreshConfig(cfg *config.Config) *smartFilterRefreshConfig
 	}
 
 	// 从配置文件读取CryptoQuant配置
-	if smartFilterCfg.CryptoQuant.APIKey != "" {
-		// 设置环境变量，供CryptoQuant客户端使用
-		os.Setenv("CRYPTOQUANT_API_KEY", smartFilterCfg.CryptoQuant.APIKey)
-	}
-
+	cryptoQuantAPIKey := smartFilterCfg.CryptoQuant.APIKey
 	if smartFilterCfg.CryptoQuant.Asset != "" {
 		cryptoQuantAsset = smartFilterCfg.CryptoQuant.Asset
 	}
 
 	return &smartFilterRefreshConfig{
-		Enabled:          enabled,
-		Source:           source,
-		Interval:         interval,
-		FilePath:         filePath,
-		HTTPURL:          httpURL,
-		HTTPTimeout:      httpTimeout,
-		CryptoQuantAsset: cryptoQuantAsset,
+		Enabled:              enabled,
+		Source:               source,
+		Interval:             interval,
+		FilePath:             filePath,
+		HTTPURL:              httpURL,
+		HTTPTimeout:          httpTimeout,
+		CryptoQuantAsset:     cryptoQuantAsset,
+		CryptoQuantAPIKey:    cryptoQuantAPIKey,
 	}
 }
 
@@ -84,6 +82,64 @@ type strategyStopper interface {
 	Stop()
 }
 
+// positionRepoAdapter 适配 repository.ActivePositionRepository 到 execution.PositionRepository
+type positionRepoAdapter struct {
+	repo repository.ActivePositionRepository
+}
+
+func (a *positionRepoAdapter) Upsert(pos *execution.PositionRecord) error {
+	return a.repo.Upsert(&storage.ActivePosition{
+		Strategy:   pos.Strategy,
+		Symbol:     pos.Symbol,
+		Side:       pos.Side,
+		Size:       pos.Size,
+		EntryPrice: pos.EntryPrice,
+		OrderID:    pos.OrderID,
+	})
+}
+
+func (a *positionRepoAdapter) Delete(strategy, symbol string) error {
+	return a.repo.Delete(strategy, symbol)
+}
+
+func (a *positionRepoAdapter) ListByStrategy(strategyName string) ([]*execution.PositionRecord, error) {
+	list, err := a.repo.ListByStrategy(strategyName)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*execution.PositionRecord, len(list))
+	for i, p := range list {
+		result[i] = &execution.PositionRecord{
+			Strategy:   p.Strategy,
+			Symbol:     p.Symbol,
+			Side:       p.Side,
+			Size:       p.Size,
+			EntryPrice: p.EntryPrice,
+			OrderID:    p.OrderID,
+		}
+	}
+	return result, nil
+}
+
+func (a *positionRepoAdapter) ListAll() ([]*execution.PositionRecord, error) {
+	list, err := a.repo.ListAll()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*execution.PositionRecord, len(list))
+	for i, p := range list {
+		result[i] = &execution.PositionRecord{
+			Strategy:   p.Strategy,
+			Symbol:     p.Symbol,
+			Side:       p.Side,
+			Size:       p.Size,
+			EntryPrice: p.EntryPrice,
+			OrderID:    p.OrderID,
+		}
+	}
+	return result, nil
+}
+
 func invokeStrategyStopHook(instance strategy.Strategy) string {
 	if instance == nil {
 		return ""
@@ -100,6 +156,33 @@ func invokeStrategyStopHook(instance strategy.Strategy) string {
 	}
 
 	return ""
+}
+
+// validateTradingMode 校验交易模式配置是否与交易所实际账户类型一致
+// 防止配置文件中设置了模拟盘但实际连接的是实盘账户（或反之）
+func validateTradingMode(exchange *okx.Client, simulated bool) error {
+	account, err := exchange.GetAccount()
+	if err != nil {
+		return fmt.Errorf("获取账户信息失败: %w", err)
+	}
+
+	// 通过账户权益判断当前模式
+	// 模拟盘通常会有特定的权益范围特征，实盘权益通常较大
+	// 这里通过总权益是否为零或异常值来初步判断
+	if !simulated && account.TotalEquity <= 0 {
+		return fmt.Errorf("配置为实盘模式，但账户权益为 %.2f，请确认 API Key 是否对应实盘账户", account.TotalEquity)
+	}
+
+	if simulated && account.TotalEquity > 0 {
+		logger.Info("模拟盘模式校验通过，账户权益: %.2f USDT",
+			zap.Float64("total_equity", account.TotalEquity))
+	}
+
+	logger.Info("交易模式校验通过",
+		zap.Bool("simulated_config", simulated),
+		zap.Float64("total_equity", account.TotalEquity))
+
+	return nil
 }
 
 func main() {
@@ -184,7 +267,12 @@ func main() {
 		logger.Error("连接交易所失败", zap.Error(err))
 		os.Exit(1)
 	}
-	defer exchange.Disconnect()
+
+	// 交易模式校验：确认配置与交易所实际账户类型一致
+	if err := validateTradingMode(exchange, cfg.Exchange.OKX.Simulated); err != nil {
+		logger.Error("交易模式校验失败", zap.Error(err))
+		os.Exit(1)
+	}
 
 	var db *storage.Database
 	var manualTradeMgr *manualtrading.Manager
@@ -296,6 +384,35 @@ func main() {
 			} else {
 				notificationMgr.RegisterChannel(emailChannel)
 				logger.Info("Email通知渠道已注册")
+			}
+		}
+
+		if cfg.Notifications.DingTalk.Enabled {
+			dingtalkCfg := &notifications.DingTalkConfig{
+				WebhookURL: cfg.Notifications.DingTalk.WebhookURL,
+				Secret:     cfg.Notifications.DingTalk.Secret,
+				AtMobiles:  cfg.Notifications.DingTalk.AtMobiles,
+				AtAll:      cfg.Notifications.DingTalk.AtAll,
+			}
+			if dingtalkChannel, err := notifications.NewDingTalkChannel(dingtalkCfg); err != nil {
+				logger.Warn("初始化钉钉通知渠道失败", zap.Error(err))
+			} else {
+				notificationMgr.RegisterChannel(dingtalkChannel)
+				logger.Info("钉钉通知渠道已注册")
+			}
+		}
+
+		if cfg.Notifications.WeCom.Enabled {
+			wecomCfg := &notifications.WeComConfig{
+				WebhookURL:          cfg.Notifications.WeCom.WebhookURL,
+				MentionedList:       cfg.Notifications.WeCom.MentionedList,
+				MentionedMobileList: cfg.Notifications.WeCom.MentionedMobileList,
+			}
+			if wecomChannel, err := notifications.NewWeComChannel(wecomCfg); err != nil {
+				logger.Warn("初始化企业微信通知渠道失败", zap.Error(err))
+			} else {
+				notificationMgr.RegisterChannel(wecomChannel)
+				logger.Info("企业微信通知渠道已注册")
 			}
 		}
 
@@ -578,6 +695,23 @@ func main() {
 	}
 	defer alertManager.Stop()
 
+	// 资金费率监控服务
+	fundingMonitorCfg := &monitoring.FundingRateMonitorConfig{
+		Enable:        true,
+		Symbols:       []string{cfg.Strategy.DefaultSymbol + "-SWAP"},
+		CheckInterval: 60 * time.Second,
+		AlertRate:     0.001,
+	}
+	fundingMonitor := monitoring.NewFundingRateMonitor(exchange, fundingMonitorCfg, alertManager)
+	fundingMonitor.SetHandler(func(sym string, rate *types.FundingRate) {
+		// 将资金费率数据推送到 DeltaNeutralFundingPro 策略
+		deltaNeutralEngine.UpdateFundingData(rate.FundingRate, rate.NextFundingRate, rate.NextSettlementTime)
+	})
+	if err := fundingMonitor.Start(); err != nil {
+		logger.Warn("启动资金费率监控失败", zap.Error(err))
+	}
+	defer fundingMonitor.Stop()
+
 	var apiServer *api.Server
 
 	executionEngine.SetAlertHandler(func(level execution.AlertLevel, title, message string, labels map[string]string, details map[string]interface{}) {
@@ -625,6 +759,20 @@ func main() {
 			logger.Info("启动对账完成")
 		}
 
+		// 持久化活跃持仓存储
+		if db != nil {
+			posRepo := repository.NewActivePositionRepository(db.DB())
+			adapter := &positionRepoAdapter{repo: posRepo}
+			executionEngine.SetPositionRepository(adapter)
+
+			// 如果快照未加载，从数据库恢复持仓
+			if !loaded {
+				if err := executionEngine.RestorePositionsFromDB(); err != nil {
+					logger.Error("从数据库恢复持仓失败", zap.Error(err))
+				}
+			}
+		}
+
 		snapshotTicker = time.NewTicker(cfg.Execution.Persistence.SnapshotInterval)
 		snapshotStop = make(chan struct{})
 		go func() {
@@ -643,6 +791,42 @@ func main() {
 
 	executionEngine.StartTakeProfitMonitor()
 	executionEngine.StartOrderMonitor()
+
+	// 订单对账服务
+	reconcilerSymbols := cfg.Execution.OrderReconciler.Symbols
+	if len(reconcilerSymbols) == 0 {
+		defaultSym := cfg.Strategy.DefaultSymbol
+		if defaultSym == "" {
+			defaultSym = "BTC-USDT"
+		}
+		reconcilerSymbols = []string{defaultSym + "-SWAP", defaultSym}
+	}
+	reconcilerCfg := &execution.OrderReconcilerConfig{
+		Enabled:  cfg.Execution.OrderReconciler.Enabled,
+		Symbols:  reconcilerSymbols,
+		Interval: cfg.Execution.OrderReconciler.Interval,
+	}
+	orderReconciler := execution.NewOrderReconciler(exchange, riskEngine, executionEngine, reconcilerCfg)
+	if cfg.Execution.OrderReconciler.Enabled {
+		orderReconciler.Start()
+		defer orderReconciler.Stop()
+		logger.Info("订单对账服务已启动",
+			zap.Strings("symbols", reconcilerSymbols),
+			zap.Duration("interval", reconcilerCfg.Interval))
+	}
+
+	// LLM持仓监控（需要llmAnalyzer和alertService都就绪）
+	var llmPositionMonitor *llmanalysis.PositionMonitor
+	if llmAnalyzer != nil && alertService != nil {
+		llmPositionMonitor = llmanalysis.NewPositionMonitor(exchange, llmAnalyzer, alertService, riskEngine, &llmanalysis.PositionMonitorConfig{
+			Enable:        cfg.LLM.Enable,
+			CheckInterval: 5 * time.Minute,
+			RiskThreshold: "high",
+			MinPnLPercent: 2.0,
+		})
+		llmPositionMonitor.Start()
+		defer llmPositionMonitor.Stop()
+	}
 
 	executeSignal := func(signal *types.Signal) {
 		logger.Info("策略信号触发",
@@ -939,6 +1123,8 @@ func main() {
 	shutdownWg.Add(1)
 	go func() {
 		defer shutdownWg.Done()
+		executionEngine.StopTakeProfitMonitor()
+		executionEngine.StopOrderMonitor()
 		mmpEngine.Stop()
 		deltaNeutralEngine.Stop()
 		needleStrategy.Stop()
