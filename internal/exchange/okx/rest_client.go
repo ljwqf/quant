@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -24,11 +25,24 @@ type restClient struct {
 
 // newRestClient 创建 REST 客户端
 func newRestClient(cfg *config.OKXConfig) *restClient {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	// 配置代理
+	if cfg.ProxyURL != "" {
+		transport := &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) {
+				return url.Parse(cfg.ProxyURL)
+			},
+		}
+		if cfg.ProxySkipVerify {
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+		httpClient.Transport = transport
+	}
+
 	return &restClient{
-		config: cfg,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		config:     cfg,
+		httpClient: httpClient,
 	}
 }
 

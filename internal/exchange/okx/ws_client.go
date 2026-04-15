@@ -2,8 +2,10 @@ package okx
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -67,6 +69,23 @@ func newWSClient(cfg *config.OKXConfig, messageHandler func([]byte)) (*wsClient,
 	return client, nil
 }
 
+// buildDialer 构建 WebSocket 拨号器（支持代理）
+func (w *wsClient) buildDialer() *websocket.Dialer {
+	dialer := *websocket.DefaultDialer
+
+	if w.config.ProxyURL != "" {
+		proxyURL, err := url.Parse(w.config.ProxyURL)
+		if err == nil {
+			dialer.Proxy = http.ProxyURL(proxyURL)
+		}
+		if w.config.ProxySkipVerify {
+			dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+	}
+
+	return &dialer
+}
+
 func (w *wsClient) connect() error {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -80,7 +99,7 @@ func (w *wsClient) connect() error {
 		return fmt.Errorf("解析 WebSocket URL 失败: %w", err)
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+	conn, _, err := w.buildDialer().Dial(wsURL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("WebSocket 连接失败: %w", err)
 	}
@@ -255,7 +274,7 @@ func (w *wsClient) doReconnect() {
 			continue
 		}
 
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+		conn, _, err := w.buildDialer().Dial(wsURL.String(), nil)
 		if err != nil {
 			logger.Error("重连失败", zap.Error(err), zap.Int("attempt", i+1))
 			time.Sleep(time.Duration(i+1) * time.Second)

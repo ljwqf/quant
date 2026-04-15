@@ -6,7 +6,8 @@
       "Bash(go vet:*)",
       "Bash(go list:*)",
       "Bash(go mod:*)",
-      "Bash(go tool:*)"
+      "Bash(go tool:*)",
+      "Bash(ssh *)"
     ]
   }
 }

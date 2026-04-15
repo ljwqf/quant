@@ -180,15 +180,17 @@ type ExchangeConfig struct {
 
 // OKXConfig OKX交易所配置
 type OKXConfig struct {
-	APIKey     string        `mapstructure:"api_key"`
-	SecretKey  string        `mapstructure:"secret_key"`
-	Passphrase string        `mapstructure:"passphrase"`
-	BaseURL    string        `mapstructure:"base_url"`
-	WSURL      string        `mapstructure:"ws_url"`
-	Timeout    time.Duration `mapstructure:"timeout"`
-	RetryCount int           `mapstructure:"retry_count"`
-	Simulated  bool          `mapstructure:"simulated"` // 是否使用模拟盘
-	MarginMode string        `mapstructure:"margin_mode"` // 交易模式：isolated(逐仓) / cross(全仓)，默认 isolated
+	APIKey          string        `mapstructure:"api_key"`
+	SecretKey       string        `mapstructure:"secret_key"`
+	Passphrase      string        `mapstructure:"passphrase"`
+	BaseURL         string        `mapstructure:"base_url"`
+	WSURL           string        `mapstructure:"ws_url"`
+	Timeout         time.Duration `mapstructure:"timeout"`
+	RetryCount      int           `mapstructure:"retry_count"`
+	Simulated       bool          `mapstructure:"simulated"`       // 是否使用模拟盘
+	MarginMode      string        `mapstructure:"margin_mode"`     // 交易模式：isolated(逐仓) / cross(全仓)，默认 isolated
+	ProxyURL        string        `mapstructure:"proxy_url"`       // 代理 URL（用于国内服务器转发到海外）
+	ProxySkipVerify bool          `mapstructure:"proxy_skip_verify"` // 跳过代理 TLS 证书验证（自签名证书时使用）
 }
 
 // SymbolExposureLimit 品种风险敞口限制配置
