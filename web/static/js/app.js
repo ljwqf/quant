@@ -548,14 +548,15 @@ function handleOrderUpdate(data) {
 // 获取初始数据
 async function fetchInitialData() {
     try {
+        const headers = buildAuthHeaders();
         const [status, strategies, positions, orders, signals, circuit, events] = await Promise.all([
-            fetch('/api/status').then(r => r.json()),
-            fetch('/api/strategies').then(r => r.json()),
-            fetch('/api/positions').then(r => r.json()),
-            fetch('/api/orders').then(r => r.json()),
-            fetch('/api/signals').then(r => r.json()),
-            fetch('/api/rebalance/circuit').then(r => r.ok ? r.json() : null),
-            fetch('/api/rebalance/events').then(r => r.ok ? r.json() : [])
+            fetch('/api/status', headers).then(r => r.json()),
+            fetch('/api/strategies', headers).then(r => r.json()),
+            fetch('/api/positions', headers).then(r => r.json()),
+            fetch('/api/orders', headers).then(r => r.json()),
+            fetch('/api/signals', headers).then(r => r.json()),
+            fetch('/api/rebalance/circuit', headers).then(r => r.ok ? r.json() : null),
+            fetch('/api/rebalance/events', headers).then(r => r.ok ? r.json() : [])
         ]);
 
         updateSystemStatus(status);

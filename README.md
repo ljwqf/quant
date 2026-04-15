@@ -1,6 +1,6 @@
 # OKX量化交易系统
 
-> **版本:** 1.3.0 | **更新日期:** 2026-04-16 | **状态:** ✅ P0/P1 全部完成，代码级验证收敛
+> **版本:** 1.4.0 | **更新日期:** 2026-04-17 | **状态:** ✅ 静态资源本地化，API 认证完善
 
 这是一个基于Go语言开发的OKX量化交易系统，支持自动交易、风险管理、回测和监控功能。
 
@@ -66,7 +66,9 @@ quant/
 │   ├── index.html
 │   └── static/
 │       ├── css/style.css
-│       └── js/app.js
+│       └── js/
+│           ├── app.js
+│           └── chart.min.js  # Chart.js 本地副本（替代 CDN）
 ├── .github/workflows/
 │   └── ci.yml            # CI/CD 流水线
 ├── Dockerfile            # 多阶段 Docker 构建
@@ -146,6 +148,9 @@ docker build -t okx-quant .
 ```bash
 docker-compose up -d
 ```
+
+> **注意**: 云服务器部署时，需在 `docker-compose.yml` 中添加 `- ./web:/app/web` 卷挂载，
+> 确保静态文件更新无需重新构建镜像。同时确认云服务商安全组已放行 8765 端口。
 
 3. 查看日志
 
