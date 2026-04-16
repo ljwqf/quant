@@ -1,5 +1,8 @@
 # Stage 1: Build
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
+
+# GOPROXY for China
+ENV GOPROXY=https://goproxy.cn,direct
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -30,9 +33,7 @@ WORKDIR /app
 COPY --from=builder /app/okx-quant /app/
 
 # Copy config templates and web assets
-COPY --from=builder /app/configs/config.yaml.example /app/configs/config.yaml.example 2>/dev/null || true
-COPY --from=builder /app/configs/config.sim.yaml /app/configs/config.sim.yaml 2>/dev/null || true
-COPY --from=builder /app/configs/config.prod.yaml /app/configs/config.prod.yaml 2>/dev/null || true
+COPY --from=builder /app/configs /app/configs
 COPY --from=builder /app/web /app/web
 
 # Create runtime directories

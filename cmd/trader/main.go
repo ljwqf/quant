@@ -1077,6 +1077,25 @@ func main() {
 	}
 	apiServer.SetNotificationManager(notificationMgr)
 	apiServer.SetStrategyEngine(strategyEngine)
+
+	// 向 API 服务器报告交易所连接状态
+	apiServer.UpdateSystemStatus(&api.SystemStatus{
+		Running:           true,
+		ExchangeConnected: true,
+		StartTime:         time.Now(),
+	})
+
+	// 定期更新账户余额和 PnL
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if acc, err := exchange.GetAccountInfo(); err == nil && acc != nil {
+				apiServer.UpdateAccountBalance(acc.TotalEquity)
+			}
+		}
+	}()
+
 	go func() {
 		if err := apiServer.Start(); err != nil {
 			logger.Error("API服务器启动失败", zap.Error(err))

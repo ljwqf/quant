@@ -2,6 +2,7 @@ package okx
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
@@ -9,12 +10,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/types"
+	"golang.org/x/net/proxy"
 )
 
 // restClient REST API 客户端
@@ -29,14 +32,27 @@ func newRestClient(cfg *config.OKXConfig) *restClient {
 
 	// 配置代理
 	if cfg.ProxyURL != "" {
-		transport := &http.Transport{
-			Proxy: func(*http.Request) (*url.URL, error) {
-				return url.Parse(cfg.ProxyURL)
-			},
-		}
+		transport := &http.Transport{}
+
 		if cfg.ProxySkipVerify {
 			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
+
+		proxyParsed, err := url.Parse(cfg.ProxyURL)
+		if err == nil {
+			switch proxyParsed.Scheme {
+			case "socks5":
+				dialer, err := proxy.SOCKS5("tcp", proxyParsed.Host, nil, proxy.Direct)
+				if err == nil {
+					transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+						return dialer.Dial(network, addr)
+					}
+				}
+			case "http", "https":
+				transport.Proxy = http.ProxyURL(proxyParsed)
+			}
+		}
+
 		httpClient.Transport = transport
 	}
 

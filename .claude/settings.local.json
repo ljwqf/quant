@@ -7,7 +7,8 @@
       "Bash(go list:*)",
       "Bash(go mod:*)",
       "Bash(go tool:*)",
-      "Bash(ssh *)"
+      "Bash(ssh *)",
+      "Bash(python3 *)"
     ]
   }
 }

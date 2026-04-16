@@ -581,6 +581,16 @@ func (s *Server) UpdateSystemStatus(status *SystemStatus) {
 	s.wsHub.Broadcast("status", status)
 }
 
+// UpdateAccountBalance 更新账户余额（不覆盖其他状态字段）
+func (s *Server) UpdateAccountBalance(balance float64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.systemStatus != nil {
+		s.systemStatus.AccountBalance = balance
+		s.wsHub.Broadcast("status", s.systemStatus)
+	}
+}
+
 // UpdateStrategyStatus 更新策略状态
 func (s *Server) UpdateStrategyStatus(name string, status *StrategyStatus) {
 	s.mutex.Lock()

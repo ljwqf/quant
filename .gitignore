@@ -69,3 +69,6 @@ configs/*
 
 # Runtime data
 data/runtime/
+
+# Private deployment info (IPs, SSH keys, internal configs)
+deployments/private/

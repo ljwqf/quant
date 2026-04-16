@@ -22,7 +22,7 @@ func (c *Client) SubscribeTicker(symbol string, handler func(*types.Tick)) error
 	c.tickerHandlers[symbol] = append(c.tickerHandlers[symbol], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("ticker", symbol, "")
+	return c.wsClient.subscribe("tickers", symbol, "")
 }
 
 // SubscribeBar 订阅K线
@@ -40,7 +40,7 @@ func (c *Client) SubscribeBar(symbol string, interval string, handler func(*type
 	c.barHandlers[symbol][interval] = append(c.barHandlers[symbol][interval], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("candle", symbol, interval)
+	return c.wsClient.subscribe("candle"+interval, symbol, "")
 }
 
 // SubscribeOrderBook 订阅订单簿
@@ -55,7 +55,7 @@ func (c *Client) SubscribeOrderBook(symbol string, handler func(*types.OrderBook
 	c.orderBookHandlers[symbol] = append(c.orderBookHandlers[symbol], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("books", symbol, "")
+	return c.wsClient.subscribe("books5", symbol, "")
 }
 
 // handleWSMessage 处理 WebSocket 消息

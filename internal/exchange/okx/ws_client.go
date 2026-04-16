@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/logger"
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -69,14 +71,24 @@ func newWSClient(cfg *config.OKXConfig, messageHandler func([]byte)) (*wsClient,
 	return client, nil
 }
 
-// buildDialer 构建 WebSocket 拨号器（支持代理）
+// buildDialer 构建 WebSocket 拨号器（支持 SOCKS5 和 HTTP 代理）
 func (w *wsClient) buildDialer() *websocket.Dialer {
 	dialer := *websocket.DefaultDialer
 
 	if w.config.ProxyURL != "" {
-		proxyURL, err := url.Parse(w.config.ProxyURL)
+		proxyParsed, err := url.Parse(w.config.ProxyURL)
 		if err == nil {
-			dialer.Proxy = http.ProxyURL(proxyURL)
+			switch proxyParsed.Scheme {
+			case "socks5":
+				socksDialer, err := proxy.SOCKS5("tcp", proxyParsed.Host, nil, proxy.Direct)
+				if err == nil {
+					dialer.NetDial = func(network, addr string) (net.Conn, error) {
+						return socksDialer.Dial(network, addr)
+					}
+				}
+			case "http", "https":
+				dialer.Proxy = http.ProxyURL(proxyParsed)
+			}
 		}
 		if w.config.ProxySkipVerify {
 			dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
