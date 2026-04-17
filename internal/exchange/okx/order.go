@@ -213,14 +213,34 @@ func (r *restClient) cancelOrder(orderID string) error {
 
 // getOrder 获取订单信息
 func (r *restClient) getOrder(orderID string) (*types.Order, error) {
+	// 先尝试查询活跃订单（不需要 instId）
 	params := map[string]interface{}{
 		"ordId": orderID,
 	}
 
 	respBody, err := r.request("GET", "/trade/order", params, nil)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return r.parseOrderResponse(respBody)
 	}
+
+	// 活跃订单查询失败，尝试从历史订单中查找
+	// 遍历常见交易对查找订单
+	symbols := []string{"BTC-USDT-SWAP", "ETH-USDT-SWAP", "BTC-USDT", "ETH-USDT"}
+	for _, symbol := range symbols {
+		historyParams := map[string]interface{}{
+			"instId": symbol,
+			"ordId":  orderID,
+		}
+		respBody, err := r.request("GET", "/trade/orders-history", historyParams, nil)
+		if err == nil {
+			return r.parseOrderResponse(respBody)
+		}
+	}
+
+	return nil, fmt.Errorf("未找到订单: %s", orderID)
+}
+
+func (r *restClient) parseOrderResponse(respBody []byte) (*types.Order, error) {
 
 	// 解析响应
 	var response struct {

@@ -1281,10 +1281,21 @@ func (e *Engine) MonitorOrders() {
 	for _, orderID := range orderIDs {
 		orderInfo, err := e.exchange.GetOrder(orderID)
 		if err != nil {
-			logger.Error("获取订单状态失败",
-				zap.String("order_id", orderID),
-				zap.Error(err),
-			)
+			// 订单查不到，可能已成交并从历史列表中消失
+			if localOrder := ordersCopy[orderID]; localOrder != nil && localOrder.FilledQty > 0 {
+				logger.Info("订单已从交易所历史消失，按已成交处理",
+					zap.String("order_id", orderID),
+					zap.Float64("filled_qty", localOrder.FilledQty),
+				)
+				e.handleOrderFilled(orderID, localOrder, localOrder)
+			} else {
+				logger.Warn("订单已从交易所历史消失，从监控列表移除",
+					zap.String("order_id", orderID),
+				)
+				e.mutex.Lock()
+				delete(e.orders, orderID)
+				e.mutex.Unlock()
+			}
 			continue
 		}
 

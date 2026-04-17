@@ -254,7 +254,9 @@ func (e *Engine) checkPositionLimitLocked(signal *types.Signal) error {
 
 	currentValue := 0.0
 	for _, pos := range e.positions {
-		currentValue += pos.Size * pos.MarkPrice
+		// 合约持仓需要按面值调整为美元价值
+		contractSize := getContractSize(pos.Symbol)
+		currentValue += pos.Size * contractSize * pos.MarkPrice
 	}
 
 	newValue := 0.0
