@@ -106,6 +106,11 @@ func (w *wsClient) connect() error {
 		return nil
 	}
 
+	// SOCKS5 proxy may need a moment to initialize; delay first connect attempt.
+	if w.config.ProxyURL != "" {
+		time.Sleep(2 * time.Second)
+	}
+
 	wsURL, err := url.Parse(w.config.WSURL)
 	if err != nil {
 		return fmt.Errorf("解析 WebSocket URL 失败: %w", err)

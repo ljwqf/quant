@@ -331,6 +331,10 @@ func (a *OnlineBayesianAllocator) SetTotalCapital(capital float64) {
 	defer a.strategiesMutex.Unlock()
 
 	a.totalCapital = capital
+	logger.Debug("SetTotalCapital",
+		zap.Float64("capital", capital),
+		zap.Int("strategyCount", len(a.strategies)),
+	)
 	a.updateTargetWeightsLocked()
 }
 
@@ -340,13 +344,25 @@ func (a *OnlineBayesianAllocator) GetAllocation(strategy string) *WeightAllocati
 
 	perf, exists := a.strategies[strategy]
 	if !exists {
+		logger.Warn("GetAllocation: strategy not found",
+			zap.String("strategy", strategy),
+			zap.Float64("totalCapital", a.totalCapital),
+		)
 		return nil
 	}
+
+	amount := a.totalCapital * perf.CurrentWeight
+	logger.Debug("GetAllocation",
+		zap.String("strategy", strategy),
+		zap.Float64("totalCapital", a.totalCapital),
+		zap.Float64("currentWeight", perf.CurrentWeight),
+		zap.Float64("amount", amount),
+	)
 
 	return &WeightAllocation{
 		Strategy: strategy,
 		Weight:   perf.CurrentWeight,
-		Amount:   a.totalCapital * perf.CurrentWeight,
+		Amount:   amount,
 	}
 }
 

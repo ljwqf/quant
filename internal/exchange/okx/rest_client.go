@@ -151,6 +151,61 @@ func (r *restClient) request(method, endpoint string, params map[string]interfac
 	return respBody, nil
 }
 
+// postRequest 发送 POST 请求（OKX 交易类接口必须使用 POST，参数放在 body 中）
+func (r *restClient) postRequest(endpoint string, body map[string]interface{}) ([]byte, error) {
+	baseURL, err := url.Parse(r.config.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("解析 BaseURL 失败: %w", err)
+	}
+
+	requestPath := "/api/v5" + endpoint
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+	bodyStr := string(bodyBytes)
+
+	timestamp, signature := r.sign("POST", requestPath, bodyStr)
+
+	req, err := http.NewRequest("POST", baseURL.String()+requestPath, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("OK-ACCESS-KEY", r.config.APIKey)
+	req.Header.Set("OK-ACCESS-SIGN", signature)
+	req.Header.Set("OK-ACCESS-TIMESTAMP", timestamp)
+	req.Header.Set("OK-ACCESS-PASSPHRASE", r.config.Passphrase)
+
+	if r.config.Simulated {
+		req.Header.Set("x-simulated-trading", "1")
+	}
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("读取响应失败: %w (close body: %v)", err, closeErr)
+		}
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return nil, fmt.Errorf("关闭响应体失败: %w", closeErr)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API 请求失败 (状态码: %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
 // getAccount 获取账户信息
 func (r *restClient) getAccount() (*types.Account, error) {
 	respBody, err := r.request("GET", "/account/balance", nil, nil)
@@ -230,7 +285,7 @@ func (r *restClient) getAccount() (*types.Account, error) {
 
 // getPositions 获取持仓信息
 func (r *restClient) getPositions() ([]*types.Position, error) {
-	respBody, err := r.request("GET", "/position/list", nil, nil)
+	respBody, err := r.request("GET", "/account/positions", nil, nil)
 	if err != nil {
 		return nil, err
 	}

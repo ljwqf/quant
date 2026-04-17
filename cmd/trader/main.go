@@ -161,7 +161,19 @@ func invokeStrategyStopHook(instance strategy.Strategy) string {
 // validateTradingMode 校验交易模式配置是否与交易所实际账户类型一致
 // 防止配置文件中设置了模拟盘但实际连接的是实盘账户（或反之）
 func validateTradingMode(exchange *okx.Client, simulated bool) error {
-	account, err := exchange.GetAccount()
+	// SOCKS5 proxy may need retries for initial REST calls
+	var account *types.Account
+	var err error
+	for i := 0; i < 3; i++ {
+		account, err = exchange.GetAccount()
+		if err == nil {
+			break
+		}
+		logger.Warn("获取账户信息失败，重试中...",
+			zap.Error(err),
+			zap.Int("attempt", i+1))
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return fmt.Errorf("获取账户信息失败: %w", err)
 	}
@@ -578,6 +590,16 @@ func main() {
 	}
 	managedStrategies["VolatilityBreakoutStrategy"] = managedStrategy{instance: volatilityBreakoutStrategy, params: volatilityBreakoutParams}
 
+	// 测试策略：1% 资金买入，1 分钟后卖出（用于验证真实交易能力）
+	testBuySellStrategy := strategy.NewTestBuySellStrategy()
+	testBuySellParams := map[string]interface{}{
+		"symbol": "BTC-USDT-SWAP",
+	}
+	if err := strategyEngine.AddStrategy("TestBuySellStrategy", testBuySellStrategy, testBuySellParams); err != nil {
+		logger.Error("添加TestBuySellStrategy策略失败", zap.Error(err))
+	}
+	managedStrategies["TestBuySellStrategy"] = managedStrategy{instance: testBuySellStrategy, params: testBuySellParams}
+
 	smartFilter := strategy.NewSmartFilter()
 	smartFilterParams := map[string]interface{}{
 		"netflow_threshold":   5000.0,
@@ -631,6 +653,7 @@ func main() {
 			"TrendFollowingStrategy",
 			"MeanReversionStrategy",
 			"VolatilityBreakoutStrategy",
+				"TestBuySellStrategy",
 		}),
 		zap.Strings("auxiliary_modules", []string{
 			"SmartFilter",
@@ -658,6 +681,7 @@ func main() {
 	engineConfig := &execution.EngineConfig{
 		TakeProfitConfig:         takeProfitConfig,
 		EnableStrategyTakeProfit: cfg.Execution.EnableStrategyTakeProfit,
+		Simulated:                cfg.Exchange.OKX.Simulated,
 		SmartRouteConfig: execution.SmartRouteConfig{
 			OrderBookDepth:       cfg.Execution.SmartRouting.OrderBookDepth,
 			MaxEstimatedSlippage: cfg.Execution.SmartRouting.MaxEstimatedSlippage,
@@ -842,7 +866,13 @@ func main() {
 			return
 		}
 
-		result, err := executionEngine.Execute(signal, account.TotalAvailable)
+		// 模拟盘 TotalAvailable 可能为 0（资金在保证金中），使用 TotalEquity 作为回退
+		availableBalance := account.TotalAvailable
+		if availableBalance <= 0 {
+			availableBalance = account.TotalEquity
+		}
+
+		result, err := executionEngine.Execute(signal, availableBalance)
 		if err != nil {
 			logger.Error("执行信号失败",
 				zap.String("strategy", signal.Strategy),
@@ -860,6 +890,19 @@ func main() {
 	}
 
 	needleStrategy.SetSignalCallback(executeSignal)
+	testBuySellStrategy.SetSignalCallback(executeSignal)
+
+	// 设置测试策略的账户余额（用于计算 1% 买入金额）
+	if acc, err := exchange.GetAccount(); err == nil && acc != nil {
+		balance := acc.TotalEquity
+		if balance <= 0 {
+			balance = acc.TotalAvailable
+		}
+		testBuySellStrategy.SetAccountBalance(balance)
+		logger.Info("TestBuySellStrategy 账户余额已设置",
+			zap.Float64("total_equity", acc.TotalEquity),
+			zap.Float64("using_balance", balance))
+	}
 
 	logger.Info("动态止盈配置",
 		zap.String("type", string(takeProfitConfig.Type)),

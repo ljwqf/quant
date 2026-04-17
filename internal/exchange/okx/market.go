@@ -10,6 +10,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// normalizeBarInterval 将 K线周期转换为 OKX WebSocket 频道格式（分钟用大写 M）
+func normalizeBarInterval(interval string) string {
+	if before, found := strings.CutSuffix(interval, "m"); found {
+		return before + "M"
+	}
+	return interval
+}
+
 // SubscribeTicker 订阅行情
 func (c *Client) SubscribeTicker(symbol string, handler func(*types.Tick)) error {
 	if !c.connected {
@@ -40,7 +48,7 @@ func (c *Client) SubscribeBar(symbol string, interval string, handler func(*type
 	c.barHandlers[symbol][interval] = append(c.barHandlers[symbol][interval], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("candle"+interval, symbol, "")
+	return c.wsClient.subscribe("candle"+normalizeBarInterval(interval), symbol, "")
 }
 
 // SubscribeOrderBook 订阅订单簿
@@ -278,7 +286,7 @@ func (c *Client) handleCandleData(data []struct {
 
 		// 调用回调函数
 		c.mutex.RLock()
-		handlers, ok := c.barHandlers[item.InstId][item.Bar]
+		handlers, ok := c.barHandlers[item.InstId][normalizeBarInterval(item.Bar)]
 		c.mutex.RUnlock()
 
 		if ok {

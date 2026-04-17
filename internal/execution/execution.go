@@ -59,6 +59,7 @@ type Engine struct {
 	lastSignalTime      map[string]time.Time // key: "strategy:symbol:side"
 	pendingOrders       map[string][]string  // key: "strategy:symbol:side" → orderIDs
 	closingPositions    map[string]time.Time // key: "strategy:symbol" → last close signal time
+	simulated           bool
 }
 
 type EngineConfig struct {
@@ -66,6 +67,7 @@ type EngineConfig struct {
 	EnableStrategyTakeProfit bool              `json:"enable_strategy_take_profit"` // 是否启用策略级止盈
 	SmartRouteConfig         SmartRouteConfig  `json:"smart_route"`
 	RebalanceConfig          RebalanceConfig   `json:"rebalance"`
+	Simulated                bool              `json:"simulated"` // 模拟盘跳过流动性检查
 }
 
 type SmartRouteConfig struct {
@@ -238,6 +240,7 @@ func NewEngineWithConfig(ex exchange.Exchange, riskEngine *risk.Engine, strategy
 	if config != nil {
 		engine.smartRouteConfig = normalizeSmartRouteConfig(config.SmartRouteConfig)
 		engine.rebalanceConfig = normalizeRebalanceConfig(config.RebalanceConfig)
+		engine.simulated = config.Simulated
 	}
 
 	return engine
@@ -618,13 +621,20 @@ func (e *Engine) executeInternal(signal *types.Signal, accountBalance float64, d
 		order, result, err = e.executeExitSignal(signal, allocation.Amount)
 	} else {
 		plannedSignal := *signal
-		if plannedSignal.Quantity <= 0 {
-			plannedSignal.Quantity = e.riskEngine.GetPositionSize(signal, allocation.Amount)
-		}
+		// 始终使用风控引擎计算的仓位大小，忽略策略硬编码数量
+		// （策略的 Quantity 仅作为信号指示，实际仓位由风控预算决定）
+		logger.Info("计算仓位参数",
+			zap.String("strategy", signal.Strategy),
+			zap.Float64("price", signal.Price),
+			zap.Float64("allocationAmount", allocation.Amount),
+		)
+		plannedSignal.Quantity = e.riskEngine.GetPositionSize(signal, allocation.Amount)
 		if plannedSignal.Quantity <= 0 {
 			logger.Error("计算仓位大小失败",
 				zap.String("strategy", signal.Strategy),
 				zap.String("symbol", signal.Symbol),
+				zap.Float64("price", signal.Price),
+				zap.Float64("allocationAmount", allocation.Amount),
 			)
 			return nil, risk.ErrInvalidSignal
 		}
@@ -1142,6 +1152,11 @@ func (e *Engine) ResetRebalanceCircuit(reason string) bool {
 func (e *Engine) smartRoute(order *types.Order, signal *types.Signal) (*types.Order, error) {
 	if order == nil {
 		return nil, risk.ErrInvalidSignal
+	}
+
+	// 模拟盘跳过订单簿深度检查（OKX 模拟盘订单簿深度极浅）
+	if e.simulated {
+		return order, nil
 	}
 
 	orderBook, err := e.exchange.GetOrderBook(order.Symbol, e.smartRouteConfig.OrderBookDepth)

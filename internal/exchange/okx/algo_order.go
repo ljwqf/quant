@@ -144,12 +144,12 @@ func (r *restClient) cancelAlgoOrder(algoID, symbol string) error {
 
 // getAlgoOrders 获取算法单列表
 func (r *restClient) getAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
-	params := map[string]interface{}{
+	body := map[string]interface{}{
 		"instId":  symbol,
 		"ordType": orderType,
 	}
 
-	respBody, err := r.request("GET", "/trade/orders-algo-pending", params, nil)
+	respBody, err := r.postRequest("/trade/orders-algo-pending", body)
 	if err != nil {
 		return nil, err
 	}

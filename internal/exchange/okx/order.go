@@ -3,6 +3,9 @@ package okx
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ljwqf/quant/pkg/logger"
@@ -59,20 +62,43 @@ func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) 
 	// 构建下单请求
 	tdMode := r.config.MarginMode
 	if tdMode == "" {
-		tdMode = "isolated" // 默认逐仓
+		isSwapContract := strings.HasSuffix(order.Symbol, "-SWAP")
+		if isSwapContract {
+			tdMode = "cross" // 合约使用全仓模式 (需要账户设置为保证金模式)
+		} else {
+			tdMode = "cash" // 现货使用 cash 模式
+		}
 	}
-	data := map[string]interface{}{
+
+	// OKX 合约下单 sz 必须为整数张数，现货可为小数
+	isSwapContract := strings.HasSuffix(order.Symbol, "-SWAP")
+	var szStr string
+	if isSwapContract {
+		contracts := int64(math.Round(order.Quantity))
+		if contracts < 1 {
+			contracts = 1 // 合约至少 1 张
+		}
+		szStr = strconv.FormatInt(contracts, 10)
+	} else {
+		szStr = strconv.FormatFloat(order.Quantity, 'f', -1, 64)
+	}
+
+	data := map[string]any{
 		"instId":  order.Symbol,
 		"tdMode":  tdMode,
 		"side":    string(order.Side),
 		"ordType": string(order.Type),
-		"sz":      fmt.Sprintf("%f", order.Quantity),
-		"lever":   fmt.Sprintf("%d", order.Leverage),
+		"sz":      szStr,
+	}
+
+	// cross/isolated 模式需要 lever 参数（合约和现货 margin 都需要）
+	if tdMode != "cash" {
+		data["lever"] = strconv.Itoa(order.Leverage)
 	}
 
 	// 限价单需要价格
 	if order.Type == types.OrderTypeLimit && order.Price > 0 {
-		data["px"] = fmt.Sprintf("%f", order.Price)
+		data["px"] = strconv.FormatFloat(order.Price, 'f', -1, 64)
 	}
 
 	// 添加客户端订单ID
@@ -106,6 +132,11 @@ func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) 
 	}
 
 	if response.Code != "0" {
+		logger.Error("OKX 下单 API 返回错误",
+			zap.String("rawResponse", string(respBody)),
+			zap.String("code", response.Code),
+			zap.String("msg", response.Msg),
+		)
 		return nil, fmt.Errorf("API 错误: %s - %s", response.Code, response.Msg)
 	}
 
