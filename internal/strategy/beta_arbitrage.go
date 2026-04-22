@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/ljwqf/quant/pkg/types"
@@ -17,6 +18,7 @@ type BetaArbitrageEngine struct {
 	lastFundingCheck time.Time            // 上次资金费率检查时间
 	positions        map[string]time.Time // 当前持仓，记录开仓时间
 	metrics          map[string]interface{}
+	mu               sync.RWMutex // 保护 priceHistory、btcPriceHistory、metrics 并发访问
 }
 
 // NewBetaArbitrageEngine 创建山寨贝塔套利引擎
@@ -95,17 +97,18 @@ func (e *BetaArbitrageEngine) OnTick(tick *types.Tick) (*types.Signal, error) {
 	rsiThreshold := e.paramFloat("rsi_threshold", 75.0)
 	betaThreshold := e.paramFloat("beta_threshold", 1.5)
 
-	// 更新价格历史
+	// 更新价格历史（加锁保护）
 	e.updatePriceHistory(tick)
 
 	// 检查是否是BTC
 	if tickSymbol == benchmarkSymbol {
+		e.mu.Lock()
 		e.btcPriceHistory = append(e.btcPriceHistory, tick.Price)
-		// 限制历史数据长度
-		maxHistory := 24 * 60 // 24小时，每分钟一个数据点
+		maxHistory := 24 * 60
 		if len(e.btcPriceHistory) > maxHistory {
 			e.btcPriceHistory = e.btcPriceHistory[len(e.btcPriceHistory)-maxHistory:]
 		}
+		e.mu.Unlock()
 		return nil, nil
 	}
 
@@ -118,24 +121,34 @@ func (e *BetaArbitrageEngine) OnTick(tick *types.Tick) (*types.Signal, error) {
 		return signal, nil
 	}
 
-	if _, exists := e.positions[tickSymbol]; exists {
+	e.mu.RLock()
+	_, exists := e.positions[tickSymbol]
+	e.mu.RUnlock()
+	if exists {
 		return nil, nil
 	}
 
 	// 计算BTC的RSI
-	btcRsi := e.calculateRSI(e.btcPriceHistory, rsiPeriod)
+	e.mu.RLock()
+	btcPrices := make([]float64, len(e.btcPriceHistory))
+	copy(btcPrices, e.btcPriceHistory)
+	e.mu.RUnlock()
+	btcRsi := e.calculateRSI(btcPrices, rsiPeriod)
 	if btcRsi >= rsiThreshold {
 		return nil, nil // BTC RSI过高，不激活扫描
 	}
 
 	// 计算BTC的收益率
-	btcReturn := e.calculateReturn(e.btcPriceHistory, 60) // 1小时收益率
-	if btcReturn <= 0.01 {                                // 比特币涨幅小于1%，不激活扫描
+	btcReturn := e.calculateReturn(btcPrices, 60) // 1小时收益率
+	if btcReturn <= 0.01 {                        // 比特币涨幅小于1%，不激活扫描
 		return nil, nil
 	}
 
 	// 计算相对强度
-	altReturn := e.calculateReturn(e.priceHistory[tickSymbol], 60) // 1小时收益率
+	e.mu.RLock()
+	altPrices := e.priceHistory[tickSymbol]
+	e.mu.RUnlock()
+	altReturn := e.calculateReturn(altPrices, 60) // 1小时收益率
 	if altReturn <= 0 {
 		return nil, nil // 山寨币下跌，不考虑
 	}
@@ -177,9 +190,11 @@ func (e *BetaArbitrageEngine) OnTick(tick *types.Tick) (*types.Signal, error) {
 		},
 	}
 
-	// 更新指标
+	// 更新指标（加锁保护）
+	e.mu.Lock()
 	totalSignals := getInt(e.metrics, "total_signals", 0)
 	e.metrics["total_signals"] = totalSignals + 1
+	e.mu.Unlock()
 
 	return signal, nil
 }
@@ -189,7 +204,8 @@ func (e *BetaArbitrageEngine) OnBar(bar *types.Bar) (*types.Signal, error) {
 	symbolKey := normalizeMarketSymbol(bar.Symbol)
 	benchmarkSymbol := normalizeMarketSymbol(getString(e.params, "benchmark", "BTC-USDT"))
 
-	// 更新价格历史
+	// 更新价格历史（加锁保护）
+	e.mu.Lock()
 	e.priceHistory[symbolKey] = append(e.priceHistory[symbolKey], bar.Close)
 
 	// 限制历史数据长度
@@ -205,6 +221,7 @@ func (e *BetaArbitrageEngine) OnBar(bar *types.Bar) (*types.Signal, error) {
 			e.btcPriceHistory = e.btcPriceHistory[len(e.btcPriceHistory)-maxHistory:]
 		}
 	}
+	e.mu.Unlock()
 
 	return nil, nil
 }
@@ -230,12 +247,22 @@ func (e *BetaArbitrageEngine) SetParams(params map[string]interface{}) {
 
 // GetMetrics 获取策略指标
 func (e *BetaArbitrageEngine) GetMetrics() map[string]interface{} {
-	return e.metrics
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	// 返回副本避免外部并发修改
+	result := make(map[string]interface{}, len(e.metrics))
+	for k, v := range e.metrics {
+		result[k] = v
+	}
+	return result
 }
 
 // updatePriceHistory 更新价格历史
 func (e *BetaArbitrageEngine) updatePriceHistory(tick *types.Tick) {
 	symbolKey := normalizeMarketSymbol(tick.Symbol)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	e.priceHistory[symbolKey] = append(e.priceHistory[symbolKey], tick.Price)
 
 	// 限制历史数据长度
@@ -281,8 +308,10 @@ func (e *BetaArbitrageEngine) calculateReturn(prices []float64, period int) floa
 
 // calculateCorrelation 计算相关性
 func (e *BetaArbitrageEngine) calculateCorrelation(symbol string) float64 {
+	e.mu.RLock()
 	altPrices := e.priceHistory[normalizeMarketSymbol(symbol)]
 	btcPrices := e.btcPriceHistory
+	e.mu.RUnlock()
 
 	minLen := len(altPrices)
 	if len(btcPrices) < minLen {
@@ -343,6 +372,9 @@ func (e *BetaArbitrageEngine) checkFundingRate() {
 // checkPositionTimeout 检查持仓是否超时
 func (e *BetaArbitrageEngine) checkPositionTimeout(symbol string) *types.Signal {
 	key := normalizeMarketSymbol(symbol)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	openTime, ok := e.positions[key]
 	if !ok {
 		return nil
@@ -427,14 +459,18 @@ func (e *BetaArbitrageEngine) OnPositionFilled(symbol string, side types.OrderSi
 	if size <= 0 {
 		return
 	}
+	e.mu.Lock()
 	e.positions[normalizeMarketSymbol(symbol)] = time.Now()
+	e.mu.Unlock()
 }
 
 func (e *BetaArbitrageEngine) OnPositionReduced(symbol string, exitPrice, pnl, remainingSize float64) {
 }
 
 func (e *BetaArbitrageEngine) OnPositionClosed(symbol string, exitPrice, pnl float64) {
+	e.mu.Lock()
 	delete(e.positions, normalizeMarketSymbol(symbol))
+	e.mu.Unlock()
 }
 
 func (e *BetaArbitrageEngine) ConfirmRebalanceEntry(request *RebalanceRequest) (*RebalanceDecision, error) {
