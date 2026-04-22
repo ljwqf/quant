@@ -33,6 +33,35 @@ func NewClient(cfg *config.OKXConfig) *Client {
 	}
 }
 
+// getKnownSymbols 从订阅的 handlers 中提取已知交易对
+func (c *Client) getKnownSymbols() []string {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	symbols := make(map[string]bool)
+
+	// 从 tickerHandlers 提取
+	for symbol := range c.tickerHandlers {
+		symbols[symbol] = true
+	}
+
+	// 从 barHandlers 提取
+	for symbol := range c.barHandlers {
+		symbols[symbol] = true
+	}
+
+	// 从 orderBookHandlers 提取
+	for symbol := range c.orderBookHandlers {
+		symbols[symbol] = true
+	}
+
+	result := make([]string, 0, len(symbols))
+	for symbol := range symbols {
+		result = append(result, symbol)
+	}
+	return result
+}
+
 func (c *Client) runHandler(handler func()) {
 	select {
 	case c.handlerConcurrency <- struct{}{}:

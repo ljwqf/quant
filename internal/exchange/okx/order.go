@@ -43,7 +43,9 @@ func (c *Client) GetOrder(orderID string) (*types.Order, error) {
 		}
 	}
 
-	return c.restClient.getOrder(orderID)
+	// 从订阅中获取已知交易对，避免硬编码
+	symbols := c.getKnownSymbols()
+	return c.restClient.getOrder(orderID, symbols)
 }
 
 // GetOrders 获取订单列表
@@ -212,7 +214,7 @@ func (r *restClient) cancelOrder(orderID string) error {
 }
 
 // getOrder 获取订单信息
-func (r *restClient) getOrder(orderID string) (*types.Order, error) {
+func (r *restClient) getOrder(orderID string, knownSymbols []string) (*types.Order, error) {
 	// 先尝试查询活跃订单（不需要 instId）
 	params := map[string]interface{}{
 		"ordId": orderID,
@@ -224,8 +226,12 @@ func (r *restClient) getOrder(orderID string) (*types.Order, error) {
 	}
 
 	// 活跃订单查询失败，尝试从历史订单中查找
-	// 遍历常见交易对查找订单
-	symbols := []string{"BTC-USDT-SWAP", "ETH-USDT-SWAP", "BTC-USDT", "ETH-USDT"}
+	// 使用已知交易对（从订阅中提取），避免硬编码
+	symbols := knownSymbols
+	if len(symbols) == 0 {
+		// 回退到常见交易对
+		symbols = []string{"BTC-USDT-SWAP", "ETH-USDT-SWAP", "BTC-USDT", "ETH-USDT"}
+	}
 	for _, symbol := range symbols {
 		historyParams := map[string]interface{}{
 			"instId": symbol,

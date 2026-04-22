@@ -3060,8 +3060,16 @@ func (e *Engine) StartTakeProfitMonitor() {
 func (e *Engine) StartOrderMonitor() {
 	e.orderMonitorStop = make(chan struct{})
 	go func() {
-		// 缩短轮询间隔至 500 毫秒，提高订单状态更新及时性
-		ticker := time.NewTicker(500 * time.Millisecond)
+		// 调整轮询间隔至 2 秒，避免触发 OKX API 限频（私有接口限制：10 次/2s）
+		// 添加 jitter 防止多实例同时请求
+		baseInterval := 2 * time.Second
+		jitter := time.Duration(float64(baseInterval) * 0.1) // 10% jitter
+		initialDelay := time.Duration(float64(baseInterval) * 0.5) // 随机初始延迟 0-1s
+
+		// 首次延迟避免启动时集中请求
+		time.Sleep(initialDelay)
+
+		ticker := time.NewTicker(baseInterval + jitter)
 		defer ticker.Stop()
 
 		for {
@@ -3074,7 +3082,7 @@ func (e *Engine) StartOrderMonitor() {
 		}
 	}()
 
-	logger.Info("订单监控已启动（轮询间隔：500 毫秒）")
+	logger.Info("订单监控已启动（轮询间隔：2 秒，含 10% jitter）")
 }
 
 func (e *Engine) StopTakeProfitMonitor() {
