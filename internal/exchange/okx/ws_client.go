@@ -91,6 +91,7 @@ func (w *wsClient) buildDialer() *websocket.Dialer {
 			}
 		}
 		if w.config.ProxySkipVerify {
+			logger.Warn("⚠️  TLS证书验证已禁用！仅在可信网络环境中使用！", zap.String("proxy", w.config.ProxyURL))
 			dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
 	}
@@ -224,12 +225,18 @@ func (w *wsClient) readLoop(ctx context.Context) {
 				return
 			}
 
+			// 设置读取超时防止阻塞过久
+			_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				logger.Error("读取 WebSocket 消息失败", zap.Error(err))
 				w.triggerReconnect()
 				return
 			}
+
+			// 重置读取超时
+			_ = conn.SetReadDeadline(time.Time{})
 
 			w.messageHandler(message)
 		}

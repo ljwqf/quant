@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/ljwqf/quant/internal/config"
+	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
+	"go.uber.org/zap"
 	"golang.org/x/net/proxy"
 )
 
@@ -35,6 +37,7 @@ func newRestClient(cfg *config.OKXConfig) *restClient {
 		transport := &http.Transport{}
 
 		if cfg.ProxySkipVerify {
+			logger.Warn("⚠️  TLS证书验证已禁用！仅在可信网络环境中使用！", zap.String("proxy", cfg.ProxyURL))
 			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
 

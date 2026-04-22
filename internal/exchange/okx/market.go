@@ -211,13 +211,37 @@ func (c *Client) handleTickerData(data *struct {
 	Vol24h  string `json:"vol24h"`
 	Ts      string `json:"ts"`
 }) {
-	// 解析数据
-	lastPrice, _ := parseFloat(data.Last)
-	open24h, _ := parseFloat(data.Open24h)
-	high24h, _ := parseFloat(data.High24h)
-	low24h, _ := parseFloat(data.Low24h)
-	volume24h, _ := parseFloat(data.Vol24h)
-	timestamp, _ := parseInt(data.Ts)
+	// 解析数据并检查错误
+	lastPrice, err := parseFloat(data.Last)
+	if err != nil {
+		logger.Warn("解析 Last 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Last), zap.Error(err))
+		return
+	}
+	open24h, err := parseFloat(data.Open24h)
+	if err != nil {
+		logger.Warn("解析 Open24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Open24h), zap.Error(err))
+		return
+	}
+	high24h, err := parseFloat(data.High24h)
+	if err != nil {
+		logger.Warn("解析 High24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.High24h), zap.Error(err))
+		return
+	}
+	low24h, err := parseFloat(data.Low24h)
+	if err != nil {
+		logger.Warn("解析 Low24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Low24h), zap.Error(err))
+		return
+	}
+	volume24h, err := parseFloat(data.Vol24h)
+	if err != nil {
+		logger.Warn("解析 Vol24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Vol24h), zap.Error(err))
+		return
+	}
+	timestamp, err := parseInt(data.Ts)
+	if err != nil {
+		logger.Warn("解析 Ts 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Ts), zap.Error(err))
+		return
+	}
 
 	t := time.Now()
 	if timestamp > 0 {
@@ -259,13 +283,37 @@ func (c *Client) handleCandleData(data []struct {
 			continue
 		}
 
-		// 解析数据
-		timestamp, _ := parseInt(item.Candle[0])
-		open, _ := parseFloat(item.Candle[1])
-		high, _ := parseFloat(item.Candle[2])
-		low, _ := parseFloat(item.Candle[3])
-		close, _ := parseFloat(item.Candle[4])
-		volume, _ := parseFloat(item.Candle[5])
+		// 解析数据并检查错误
+		timestamp, err := parseInt(item.Candle[0])
+		if err != nil {
+			logger.Warn("解析 K线 timestamp 失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[0]), zap.Error(err))
+			continue
+		}
+		open, err := parseFloat(item.Candle[1])
+		if err != nil {
+			logger.Warn("解析 K线 open 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[1]), zap.Error(err))
+			continue
+		}
+		high, err := parseFloat(item.Candle[2])
+		if err != nil {
+			logger.Warn("解析 K线 high 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[2]), zap.Error(err))
+			continue
+		}
+		low, err := parseFloat(item.Candle[3])
+		if err != nil {
+			logger.Warn("解析 K线 low 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[3]), zap.Error(err))
+			continue
+		}
+		close, err := parseFloat(item.Candle[4])
+		if err != nil {
+			logger.Warn("解析 K线 close 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[4]), zap.Error(err))
+			continue
+		}
+		volume, err := parseFloat(item.Candle[5])
+		if err != nil {
+			logger.Warn("解析 K线 volume 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[5]), zap.Error(err))
+			continue
+		}
 
 		t := time.Now()
 		if timestamp > 0 {
@@ -286,15 +334,18 @@ func (c *Client) handleCandleData(data []struct {
 
 		// 调用回调函数
 		c.mutex.RLock()
-		handlers, ok := c.barHandlers[item.InstId][normalizeBarInterval(item.Bar)]
+		symbolHandlers := c.barHandlers[item.InstId]
 		c.mutex.RUnlock()
 
-		if ok {
-			for _, handler := range handlers {
-				h := handler
-				c.runHandler(func() {
-					h(bar)
-				})
+		if symbolHandlers != nil {
+			handlers, ok := symbolHandlers[normalizeBarInterval(item.Bar)]
+			if ok {
+				for _, handler := range handlers {
+					h := handler
+					c.runHandler(func() {
+						h(bar)
+					})
+				}
 			}
 		}
 	}
@@ -308,9 +359,13 @@ func (c *Client) handleBookData(data *struct {
 	Ts       string     `json:"ts"`
 	Checksum string     `json:"checksum"`
 }) {
-	// 解析数据
-	timestamp, _ := parseInt(data.Ts)
-	checksum, _ := parseInt(data.Checksum)
+	// 解析数据并检查错误
+	timestamp, err := parseInt(data.Ts)
+	if err != nil {
+		logger.Warn("解析订单簿 Ts 失败", zap.String("symbol", data.InstId), zap.String("value", data.Ts), zap.Error(err))
+		// 继续处理，使用当前时间作为 fallback
+	}
+	checksum, _ := parseInt(data.Checksum) // checksum 可选，不需要错误处理
 
 	t := time.Now()
 	if timestamp > 0 {
@@ -327,29 +382,55 @@ func (c *Client) handleBookData(data *struct {
 	}
 
 	// 解析卖单
+	hasValidAsks := false
 	for _, ask := range data.Asks {
 		if len(ask) < 2 {
 			continue
 		}
-		price, _ := parseFloat(ask[0])
-		size, _ := parseFloat(ask[1])
+		price, err := parseFloat(ask[0])
+		if err != nil {
+			logger.Warn("解析卖单价格失败", zap.String("symbol", data.InstId), zap.String("value", ask[0]), zap.Error(err))
+			continue
+		}
+		size, err := parseFloat(ask[1])
+		if err != nil {
+			logger.Warn("解析卖单数量失败", zap.String("symbol", data.InstId), zap.String("value", ask[1]), zap.Error(err))
+			continue
+		}
 		orderBook.Asks = append(orderBook.Asks, types.OrderBookLevel{
 			Price: price,
 			Size:  size,
 		})
+		hasValidAsks = true
 	}
 
 	// 解析买单
+	hasValidBids := false
 	for _, bid := range data.Bids {
 		if len(bid) < 2 {
 			continue
 		}
-		price, _ := parseFloat(bid[0])
-		size, _ := parseFloat(bid[1])
+		price, err := parseFloat(bid[0])
+		if err != nil {
+			logger.Warn("解析买单价格失败", zap.String("symbol", data.InstId), zap.String("value", bid[0]), zap.Error(err))
+			continue
+		}
+		size, err := parseFloat(bid[1])
+		if err != nil {
+			logger.Warn("解析买单数量失败", zap.String("symbol", data.InstId), zap.String("value", bid[1]), zap.Error(err))
+			continue
+		}
 		orderBook.Bids = append(orderBook.Bids, types.OrderBookLevel{
 			Price: price,
 			Size:  size,
 		})
+		hasValidBids = true
+	}
+
+	// 如果没有有效的价格数据，不要继续处理
+	if !hasValidAsks && !hasValidBids {
+		logger.Warn("订单簿没有有效的价格数据", zap.String("symbol", data.InstId))
+		return
 	}
 
 	// 调用回调函数
