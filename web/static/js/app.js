@@ -1302,6 +1302,8 @@ function formatPercent(num) {
 function formatTime(time) {
     if (!time) return '--';
     const date = new Date(time);
+    // Go zero-value time serializes as "0001-01-01T00:00:00Z" - show as '--'
+    if (date.getFullYear() < 1970) return '--';
     return date.toLocaleString('zh-CN');
 }
 
@@ -2199,21 +2201,15 @@ function updateOrderBookDisplay(data) {
     }
 }
 
-// 处理系统状态
+// 处理系统状态 (WebSocket status 消息)
 function handleSystemStatus(data) {
     if (!data) return;
 
-    const clientCountEl = document.getElementById('ws-client-count');
-    if (clientCountEl) {
-        clientCountEl.textContent = data.client_count;
-    }
+    // SystemStatus 包含: running, exchange_connected, start_time, uptime,
+    // account_balance, total_pnl, daily_pnl, win_rate, total_trades
+    // 不包含 client_count / message_count
 
-    const messageCountEl = document.getElementById('ws-message-count');
-    if (messageCountEl) {
-        messageCountEl.textContent = data.message_count;
-    }
-
-    // Calculate uptime from start_time (ISO 8601 timestamp)
+    // 根据 start_time 计算并更新运行时间
     const uptimeEl = document.getElementById('ws-uptime');
     if (uptimeEl && data.start_time) {
         const startTime = new Date(data.start_time);
@@ -2225,6 +2221,9 @@ function handleSystemStatus(data) {
             uptimeEl.textContent = '--';
         }
     }
+
+    // 同步更新主面板的系统状态数据
+    updateSystemStatus(data);
 }
 
 // 格式化持续时间
