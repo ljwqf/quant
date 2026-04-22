@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchInitialData();
     updateTime();
     setInterval(updateTime, 1000);
-    // 定期更新图表数据（模拟）
+    // 定期更新盈亏图表数据（从 API 获取真实数据）
     setInterval(updateChartData, 5000);
 });
 
@@ -287,59 +287,65 @@ function initCharts() {
     
     // 初始化技术指标参数
     updateIndicatorParams();
-    
-    // 生成初始模拟数据
-    generateInitialChartData();
-    
-    // 生成初始技术指标数据
-    generateInitialIndicatorData();
 }
 
-// 生成初始图表数据
-function generateInitialChartData() {
-    // 盈亏走势图数据
-    const now = new Date();
-    let cumulativePnl = 0;
-    for (let i = 30; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        const change = (Math.random() - 0.45) * 100;
-        cumulativePnl += change;
-        pnlChartData.labels.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
-        pnlChartData.datasets[0].data.push(Math.round(cumulativePnl * 100) / 100);
+// 生成初始图表数据（从 API 获取真实数据）
+async function generateInitialChartData() {
+    // 盈亏走势图 - 从 API 获取当前盈亏
+    try {
+        const headers = buildAuthHeaders();
+        const status = await fetch('/api/status', headers).then(r => r.json());
+        if (status && status.total_pnl !== undefined) {
+            const now = new Date();
+            pnlChartData.labels.push(now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+            pnlChartData.datasets[0].data.push(status.total_pnl);
+            if (pnlChart) pnlChart.update();
+        }
+    } catch (error) {
+        console.error('获取盈亏数据失败:', error);
     }
-    
-    // 策略性能数据
-    const strategies = ['趋势跟踪', '均值回归', '网格交易', '套利策略', '机器学习'];
-    strategies.forEach((name, index) => {
-        strategyPerformanceData.labels.push(name);
-        strategyPerformanceData.datasets[0].data.push(Math.round((Math.random() - 0.3) * 500 * 100) / 100);
-    });
-    
-    // 更新图表
-    if (pnlChart) pnlChart.update();
-    if (strategyPerformanceChart) strategyPerformanceChart.update();
+
+    // 策略性能数据 - 从 API 获取真实策略盈亏
+    try {
+        const headers = buildAuthHeaders();
+        const strategies = await fetch('/api/strategies', headers).then(r => r.json());
+        if (strategies && strategies.length > 0) {
+            strategyPerformanceData.labels = [];
+            strategyPerformanceData.datasets[0].data = [];
+            strategies.forEach((s) => {
+                strategyPerformanceData.labels.push(s.name);
+                strategyPerformanceData.datasets[0].data.push(Math.round(s.pnl * 100) / 100);
+            });
+            if (strategyPerformanceChart) strategyPerformanceChart.update();
+        }
+    } catch (error) {
+        console.error('获取策略性能数据失败:', error);
+    }
 }
 
-// 更新图表数据
-function updateChartData() {
-    // 更新盈亏走势图
-    const now = new Date();
-    const lastValue = pnlChartData.datasets[0].data[pnlChartData.datasets[0].data.length - 1] || 0;
-    const change = (Math.random() - 0.45) * 20;
-    const newValue = lastValue + change;
-    
-    pnlChartData.labels.push(now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
-    pnlChartData.datasets[0].data.push(Math.round(newValue * 100) / 100);
-    
-    // 保持数据点数量在50个以内
-    if (pnlChartData.labels.length > 50) {
-        pnlChartData.labels.shift();
-        pnlChartData.datasets[0].data.shift();
+// 更新图表数据（从 API 获取真实盈亏）
+async function updateChartData() {
+    try {
+        const headers = buildAuthHeaders();
+        const status = await fetch('/api/status', headers).then(r => r.json());
+        if (!status || status.total_pnl === undefined) return;
+
+        const now = new Date();
+        const timeLabel = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+        pnlChartData.labels.push(timeLabel);
+        pnlChartData.datasets[0].data.push(status.total_pnl);
+
+        // Keep data points within 50
+        if (pnlChartData.labels.length > 50) {
+            pnlChartData.labels.shift();
+            pnlChartData.datasets[0].data.shift();
+        }
+
+        if (pnlChart) pnlChart.update();
+    } catch (error) {
+        console.error('更新图表数据失败:', error);
     }
-    
-    // 更新图表
-    if (pnlChart) pnlChart.update();
 }
 
 // 主题切换时更新图表颜色
@@ -566,6 +572,9 @@ async function fetchInitialData() {
         updateSignals(signals);
         updateRebalanceCircuit(circuit);
         hydrateRebalanceEvents(events);
+
+        // Load real chart data
+        await generateInitialChartData();
     } catch (error) {
         console.error('获取数据失败:', error);
     }
@@ -2193,32 +2202,54 @@ function updateOrderBookDisplay(data) {
 // 处理系统状态
 function handleSystemStatus(data) {
     if (!data) return;
-    
+
     const clientCountEl = document.getElementById('ws-client-count');
     if (clientCountEl) {
         clientCountEl.textContent = data.client_count;
     }
-    
+
     const messageCountEl = document.getElementById('ws-message-count');
     if (messageCountEl) {
         messageCountEl.textContent = data.message_count;
     }
-    
+
+    // Calculate uptime from start_time (ISO 8601 timestamp)
     const uptimeEl = document.getElementById('ws-uptime');
-    if (uptimeEl) {
-        uptimeEl.textContent = formatDuration(data.uptime);
+    if (uptimeEl && data.start_time) {
+        const startTime = new Date(data.start_time);
+        const now = new Date();
+        const diffMs = now - startTime;
+        if (diffMs > 0) {
+            uptimeEl.textContent = formatDuration(diffMs);
+        } else {
+            uptimeEl.textContent = '--';
+        }
     }
 }
 
 // 格式化持续时间
-function formatDuration(durationMs) {
-    if (!durationMs) return '--';
-    
+function formatDuration(duration) {
+    if (!duration) return '--';
+
+    // Handle Go duration strings like "5m30s", "1h2m3s", "2d5h", "48h0m0s"
+    if (typeof duration === 'string') {
+        // If it's already a human-readable Go duration string, return it directly
+        // Go formats as "1h2m3s" which is already readable
+        if (/^\d/.test(duration)) {
+            // Convert "Xd" format if present, or return Go duration as-is
+            return duration;
+        }
+    }
+
+    // Fallback: treat as milliseconds (for legacy compatibility)
+    const durationMs = typeof duration === 'number' ? duration : Number(duration);
+    if (isNaN(durationMs) || durationMs <= 0) return '--';
+
     const seconds = Math.floor(durationMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-    
+
     if (days > 0) {
         return `${days}天${hours % 24}小时`;
     } else if (hours > 0) {

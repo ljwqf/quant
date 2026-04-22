@@ -576,7 +576,14 @@ func (s *Server) UpdateSystemStatus(status *SystemStatus) {
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	status.Uptime = time.Since(s.systemStatus.StartTime).String()
+	// Preserve original StartTime across status updates; fall back to new status's value.
+	startTime := time.Now()
+	if s.systemStatus != nil && !s.systemStatus.StartTime.IsZero() {
+		startTime = s.systemStatus.StartTime
+	} else if !status.StartTime.IsZero() {
+		startTime = status.StartTime
+	}
+	status.Uptime = time.Since(startTime).String()
 	s.systemStatus = status
 	s.wsHub.Broadcast("status", status)
 }
