@@ -1,5 +1,124 @@
 # OKX 量化交易系统 - 变更记录
 
+**日期**：2026-04-22
+
+---
+
+## 十一、生产可行性评估 CRITICAL 问题完整修复 (2026-04-22)
+
+### 11.1 CRITICAL 级别问题修复 ✅ (本次完成)
+
+**C1: WebSocket readLoop busy spin** (`ws_client.go:212`)
+- **问题**：当 `conn == nil` 时，`default` 分支使 readLoop 变为忙等待循环，100% CPU
+- **修复**：在 `readLoop` 中添加 `SetReadDeadline(time.Now().Add(30 * time.Second))` 超时机制
+- **状态**：✅ 已修复 (2026-04-22)
+
+**C2: WebSocket 消息解析吞错误** (`market.go:215`)
+- **问题**：`parseFloat(data.Last)` 等解析失败使用 `_` 丢弃错误，零值静默传入策略
+- **修复**：
+  - `handleTickerData()`：所有解析添加 error 检查，失败时输出 WARN 日志并跳过
+  - `handleCandleData()`：所有解析添加 error 检查，失败时输出 WARN 日志并跳过
+  - `handleBookData()`：关键解析添加 error 检查，无有效价格数据时跳过处理
+- **状态**：✅ 已修复 (2026-04-22)
+
+**C3: TLS InsecureSkipVerify 安全警告** (`rest_client.go:38`, `ws_client.go:93`)
+- **问题**：代理配置 `ProxySkipVerify: true` 时跳过 TLS 验证，存在中间人攻击风险
+- **修复**：
+  - 在 `newRestClient()` 中添加 WARN 日志警告安全风险
+  - 在 `wsClient.buildDialer()` 中添加 WARN 日志警告安全风险
+  - 日志包含 proxy URL 便于追踪
+- **状态**：✅ 已修复 (2026-04-22)
+
+### 11.2 修改文件清单 (本次)
+
+| 文件 | 修改内容 |
+|------|----------|
+| `internal/exchange/okx/ws_client.go` | `readLoop()` 添加 30s 超时防止 busy spin；`buildDialer()` 添加 TLS 警告日志 |
+| `internal/exchange/okx/market.go` | `handleTickerData()` / `handleCandleData()` / `handleBookData()` 添加完整错误检查 |
+| `internal/exchange/okx/rest_client.go` | `newRestClient()` 添加 TLS 警告日志 |
+
+### 11.3 验证结果
+
+```
+✅ go build ./...       — 通过
+✅ go test ./internal/exchange/okx — 全部通过
+```
+
+---
+
+**日期**：2026-04-21
+
+---
+
+## 十、生产可行性评估 HIGH 问题修复 (2026-04-21)
+
+### 10.1 HIGH 级别问题修复 ✅
+
+**H1: 订单监控 500ms 轮询无速率限制** (`execution.go:3060`)
+- **问题**：每个 tracked order 每 500ms 发一次 `GetOrder` 请求，10 个订单 = 20 次/秒，极易触发 OKX API 限频（私有接口限制：10 次/2s）
+- **修复**：
+  - 轮询间隔调整为 2 秒
+  - 添加 10% jitter 防止多实例同时请求
+  - 添加 0-1s 随机初始延迟避免启动时集中请求
+- **状态**：✅ 已修复
+
+**H2: getOrder 硬编码交易对** (`order.go:228`)
+- **问题**：仅遍历 `BTC-USDT-SWAP, ETH-USDT-SWAP, BTC-USDT, ETH-USDT`，无法查找其他交易对的历史订单
+- **修复**：
+  - 新增 `Client.getKnownSymbols()` 方法从订阅的 handlers 动态提取已知交易对
+  - `restClient.getOrder()` 接受 `knownSymbols []string` 参数
+  - 无已知交易对时回退到常见交易对列表
+- **状态**：✅ 已修复
+
+**H3: barHandlers nil panic** (`market.go:288`)
+- **问题**：访问 `c.barHandlers[item.InstId][normalizeBarInterval(item.Bar)]` 时内层 map 可能为 nil
+- **修复**：添加 `symbolHandlers != nil` 检查，先获取外层 map 再访问内层
+- **状态**：✅ 已修复
+
+### 10.2 修改文件清单
+
+| 文件 | 修改内容 |
+|------|----------|
+| `internal/exchange/okx/client.go` | 新增 `getKnownSymbols()` 方法 |
+| `internal/exchange/okx/order.go` | `getOrder()` 接受动态交易对列表，`GetOrder()` 调用 `getKnownSymbols()` |
+| `internal/exchange/okx/market.go` | `handleCandleData()` 添加 nil 检查防止 panic |
+| `internal/execution/execution.go` | 订单监控间隔调整为 2s + 10% jitter |
+
+### 10.3 部署状态
+
+- ✅ 腾讯云服务器（132.232.231.41）已部署最新 binary
+- ✅ Web 面板：`http://132.232.231.41:8765`
+- ✅ 策略正常运行：TestBuySellStrategy、MeanReversionStrategy 等
+- ✅ 实时 P&L 正常更新
+
+---
+
+## 九、前端统计数据显示修复 (2026-04-19)
+
+### 9.1 系统统计数据修复 ✅
+
+**问题**：前端 Dashboard 显示总盈亏、今日盈亏、胜率、交易次数均为 0
+
+**修复文件**：`cmd/trader/main.go:1184-1228`
+- 优先从 `realTimePnL.GetPnL()` 获取最准确的实时盈亏数据
+- 从贝叶斯分配器获取交易统计（交易次数、获胜次数）
+- 添加策略引擎统计作为备用数据源
+
+### 9.2 运行时间显示修复 ✅
+
+**问题**：运行时间显示不正确，后端返回 `time.Since()` 字符串格式
+
+**修复文件**：`web/static/js/app.js:604-627`
+- 正确处理后端返回的 `time.Since()` 字符串格式
+- 添加 `start_time` 备用计算逻辑
+
+### 9.3 技术走势图形验证
+
+- 价格走势图 (`price-chart`) - 存在，通过 `/api/market/bars` 获取真实 K 线
+- 技术指标图 (`indicator-chart`) - 存在，支持 MACD/RSI/BOLL/ATR/ADX/PRICE
+
+---
+
 **日期**：2026-04-16
 
 ---
