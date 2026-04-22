@@ -77,8 +77,13 @@ func (r *restClient) sign(method, requestPath, body string) (string, string) {
 	return timestamp, signature
 }
 
-// request 发送 HTTP 请求
+// request 发送 HTTP 请求（带 per-request context 超时控制）
 func (r *restClient) request(method, endpoint string, params map[string]interface{}, data interface{}) ([]byte, error) {
+	return r.requestWithContext(context.Background(), method, endpoint, params, data)
+}
+
+// requestWithContext 发送 HTTP 请求，允许调用方传入自定义 context 控制超时
+func (r *restClient) requestWithContext(ctx context.Context, method, endpoint string, params map[string]interface{}, data interface{}) ([]byte, error) {
 	// 构建请求 URL
 	baseURL, err := url.Parse(r.config.BaseURL)
 	if err != nil {
@@ -109,8 +114,8 @@ func (r *restClient) request(method, endpoint string, params map[string]interfac
 	// 生成签名
 	timestamp, signature := r.sign(method, requestPath, bodyStr)
 
-	// 创建请求
-	req, err := http.NewRequest(method, baseURL.String()+requestPath, bytes.NewReader(body))
+	// 创建请求（绑定 context）
+	req, err := http.NewRequestWithContext(ctx, method, baseURL.String()+requestPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
@@ -130,6 +135,9 @@ func (r *restClient) request(method, endpoint string, params map[string]interfac
 	// 发送请求
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("请求超时 (endpoint=%s): %w", endpoint, ctx.Err())
+		}
 		return nil, fmt.Errorf("发送请求失败: %w", err)
 	}
 
@@ -156,6 +164,11 @@ func (r *restClient) request(method, endpoint string, params map[string]interfac
 
 // postRequest 发送 POST 请求（OKX 交易类接口必须使用 POST，参数放在 body 中）
 func (r *restClient) postRequest(endpoint string, body map[string]interface{}) ([]byte, error) {
+	return r.postRequestWithContext(context.Background(), endpoint, body)
+}
+
+// postRequestWithContext 发送 POST 请求，允许调用方传入自定义 context 控制超时
+func (r *restClient) postRequestWithContext(ctx context.Context, endpoint string, body map[string]interface{}) ([]byte, error) {
 	baseURL, err := url.Parse(r.config.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("解析 BaseURL 失败: %w", err)
@@ -170,7 +183,7 @@ func (r *restClient) postRequest(endpoint string, body map[string]interface{}) (
 
 	timestamp, signature := r.sign("POST", requestPath, bodyStr)
 
-	req, err := http.NewRequest("POST", baseURL.String()+requestPath, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", baseURL.String()+requestPath, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
@@ -187,6 +200,9 @@ func (r *restClient) postRequest(endpoint string, body map[string]interface{}) (
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("请求超时 (endpoint=%s): %w", endpoint, ctx.Err())
+		}
 		return nil, fmt.Errorf("发送请求失败: %w", err)
 	}
 
@@ -211,7 +227,9 @@ func (r *restClient) postRequest(endpoint string, body map[string]interface{}) (
 
 // getAccount 获取账户信息
 func (r *restClient) getAccount() (*types.Account, error) {
-	respBody, err := r.request("GET", "/account/balance", nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	respBody, err := r.requestWithContext(ctx, "GET", "/account/balance", nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +306,9 @@ func (r *restClient) getAccount() (*types.Account, error) {
 
 // getPositions 获取持仓信息
 func (r *restClient) getPositions() ([]*types.Position, error) {
-	respBody, err := r.request("GET", "/account/positions", nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	respBody, err := r.requestWithContext(ctx, "GET", "/account/positions", nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -354,11 +374,13 @@ func (r *restClient) getPositions() ([]*types.Position, error) {
 
 // getTicker 获取最新行情
 func (r *restClient) getTicker(symbol string) (*types.Tick, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	params := map[string]interface{}{
 		"instId": symbol,
 	}
 
-	respBody, err := r.request("GET", "/market/ticker", params, nil)
+	respBody, err := r.requestWithContext(ctx, "GET", "/market/ticker", params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -409,13 +431,15 @@ func (r *restClient) getTicker(symbol string) (*types.Tick, error) {
 
 // getBars 获取历史K线
 func (r *restClient) getBars(symbol string, interval string, limit int) ([]*types.Bar, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	params := map[string]interface{}{
 		"instId": symbol,
 		"bar":    interval,
 		"limit":  limit,
 	}
 
-	respBody, err := r.request("GET", "/market/candles", params, nil)
+	respBody, err := r.requestWithContext(ctx, "GET", "/market/candles", params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -466,12 +490,14 @@ func (r *restClient) getBars(symbol string, interval string, limit int) ([]*type
 
 // getOrderBook 获取订单簿
 func (r *restClient) getOrderBook(symbol string, depth int) (*types.OrderBook, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	params := map[string]interface{}{
 		"instId": symbol,
 		"depth":  depth,
 	}
 
-	respBody, err := r.request("GET", "/market/books", params, nil)
+	respBody, err := r.requestWithContext(ctx, "GET", "/market/books", params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -560,7 +586,9 @@ func (r *restClient) setLeverage(symbol string, leverage int, marginMode string)
 		"mgnMode": marginMode,
 	}
 
-	respBody, err := r.request("POST", "/account/set-leverage", nil, data)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	respBody, err := r.postRequestWithContext(ctx, "/account/set-leverage", data)
 	if err != nil {
 		return err
 	}
@@ -583,11 +611,13 @@ func (r *restClient) setLeverage(symbol string, leverage int, marginMode string)
 
 // getFundingRate 获取资金费率
 func (r *restClient) getFundingRate(instId string) (*types.FundingRate, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	params := map[string]interface{}{
 		"instId": instId,
 	}
 
-	respBody, err := r.request("GET", "/public/funding-rate", params, nil)
+	respBody, err := r.requestWithContext(ctx, "GET", "/public/funding-rate", params, nil)
 	if err != nil {
 		return nil, err
 	}

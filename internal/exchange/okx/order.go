@@ -1,6 +1,7 @@
 package okx
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -108,7 +109,9 @@ func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) 
 		data["clOrdId"] = order.ClientID
 	}
 
-	respBody, err := r.request("POST", "/trade/order", nil, data)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	respBody, err := r.postRequestWithContext(ctx, "/trade/order", data)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +194,9 @@ func (r *restClient) cancelOrder(orderID string) error {
 		"ordId": orderID,
 	}
 
-	respBody, err := r.request("POST", "/trade/cancel-order", nil, data)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	respBody, err := r.postRequestWithContext(ctx, "/trade/cancel-order", data)
 	if err != nil {
 		return err
 	}
@@ -220,7 +225,10 @@ func (r *restClient) getOrder(orderID string, knownSymbols []string) (*types.Ord
 		"ordId": orderID,
 	}
 
-	respBody, err := r.request("GET", "/trade/order", params, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	respBody, err := r.requestWithContext(ctx, "GET", "/trade/order", params, nil)
 	if err == nil {
 		return r.parseOrderResponse(respBody)
 	}
@@ -237,7 +245,7 @@ func (r *restClient) getOrder(orderID string, knownSymbols []string) (*types.Ord
 			"instId": symbol,
 			"ordId":  orderID,
 		}
-		respBody, err := r.request("GET", "/trade/orders-history", historyParams, nil)
+		respBody, err := r.requestWithContext(ctx, "GET", "/trade/orders-history", historyParams, nil)
 		if err == nil {
 			return r.parseOrderResponse(respBody)
 		}
@@ -352,12 +360,14 @@ func (r *restClient) parseOrderResponse(respBody []byte) (*types.Order, error) {
 
 // getOrders 获取订单列表
 func (r *restClient) getOrders(symbol string, limit int) ([]*types.Order, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	params := map[string]interface{}{
 		"instId": symbol,
 		"limit":  limit,
 	}
 
-	respBody, err := r.request("GET", "/trade/orders-history", params, nil)
+	respBody, err := r.requestWithContext(ctx, "GET", "/trade/orders-history", params, nil)
 	if err != nil {
 		return nil, err
 	}
