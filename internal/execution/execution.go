@@ -708,12 +708,22 @@ func (e *Engine) executeEntrySignal(signal *types.Signal, accountBalance float64
 		return nil, nil, nil
 	}
 
+	// 现货使用市价单（避免 OKX 限价单价格范围校验失败 51137）
+	// 合约使用限价单（模拟盘市价单可能被拒）
+	isSwap := strings.HasSuffix(signal.Symbol, "-SWAP")
+	orderType := types.OrderTypeMarket
+	price := 0.0
+	if isSwap {
+		orderType = types.OrderTypeLimit
+		price = signal.Price
+	}
+
 	order := &types.Order{
 		Symbol:    signal.Symbol,
 		Side:      e.getOrderSide(signal.Type),
-		Type:      types.OrderTypeLimit,
+		Type:      orderType,
 		Quantity:  quantity,
-		Price:     signal.Price,
+		Price:     price,
 		Leverage:  1,
 		Timestamp: time.Now(),
 	}

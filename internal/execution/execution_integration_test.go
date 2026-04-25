@@ -412,7 +412,8 @@ func TestRebalanceEntryRequiresStrategyApproval(t *testing.T) {
 	for _, order := range exchange.placedOrders {
 		if order.Symbol == "ETH-USDT" && order.Side == types.OrderSideBuy {
 			foundTopUp = true
-			assert.Equal(t, 49.0, order.Price)
+			// 现货开仓使用市价单（避免 OKX 限价单价格范围校验 51137）
+			assert.Equal(t, types.OrderTypeMarket, order.Type)
 			assert.Equal(t, 4.0, order.Quantity)
 		}
 	}
