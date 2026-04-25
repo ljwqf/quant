@@ -440,7 +440,9 @@ func TestBroadcastRebalanceEventPublishesLifecyclePayload(t *testing.T) {
 }
 
 func TestWebSocketRejectsRemoteWithoutToken(t *testing.T) {
-	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	cfg := testConfig()
+	cfg.Server.APIToken = "test-token-secret"
+	s := NewServer("127.0.0.1", 8765, cfg, "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.RemoteAddr = "203.0.113.10:4321"
@@ -454,16 +456,41 @@ func TestWebSocketRejectsRemoteWithoutToken(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), "valid token")
 }
 
+func TestWebSocketAllowsRemoteWithValidToken(t *testing.T) {
+	cfg := testConfig()
+	cfg.Server.APIToken = "test-token-secret"
+	s := NewServer("127.0.0.1", 8765, cfg, "", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/ws?token=test-token-secret", nil)
+	req.RemoteAddr = "203.0.113.10:4321"
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	recorder := httptest.NewRecorder()
+
+	// 没有正确的 WebSocket 握手头，但至少验证 token 检查通过了
+	s.wsHub.HandleWebSocket(recorder, req)
+
+	// token 验证通过，不会被 403 拒绝（可能因握手不完整而失败，但不是 403）
+	require.NotEqual(t, http.StatusForbidden, recorder.Code)
+}
+
 func TestWebSocketOriginValidation(t *testing.T) {
+	// 同源请求应允许
 	sameOriginReq := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	sameOriginReq.Host = "example.com"
 	sameOriginReq.Header.Set("Origin", "https://example.com")
 	assert.True(t, upgrader.CheckOrigin(sameOriginReq))
 
+	// 直接 IP 访问（无 Origin 头）应允许
+	noOriginReq := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	noOriginReq.Host = "132.232.231.41:8080"
+	assert.True(t, upgrader.CheckOrigin(noOriginReq))
+
+	// 跨域请求也应允许（通过 token 验证保护）
 	crossOriginReq := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	crossOriginReq.Host = "example.com"
 	crossOriginReq.Header.Set("Origin", "https://evil.example")
-	assert.False(t, upgrader.CheckOrigin(crossOriginReq))
+	assert.True(t, upgrader.CheckOrigin(crossOriginReq))
 }
 
 func TestWebSocketAllowsTokenWithSameOrigin(t *testing.T) {

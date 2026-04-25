@@ -180,6 +180,7 @@ type StrategyStatus struct {
 	PnL        float64   `json:"pnl"`
 	WinRate    float64   `json:"win_rate"`
 	Trades     int       `json:"trades"`
+	Weight     float64   `json:"weight"`
 	LastSignal string    `json:"last_signal"`
 	LastUpdate time.Time `json:"last_update"`
 }
@@ -1202,6 +1203,15 @@ func (s *Server) checkRateLimit(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// isAuthAllowed 判断是否允许访问（无 token 配置时允许所有请求）
+func (s *Server) isAuthAllowed(token string) bool {
+	if s.apiToken == "" {
+		// 未配置 token，允许所有请求
+		return true
+	}
+	return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(s.apiToken)) == 1
 }
 
 func (s *Server) hasValidToken(token string) bool {

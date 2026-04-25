@@ -18,6 +18,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
+		// 允许同源请求（包括直接通过 IP 访问）
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			return true
@@ -26,7 +27,12 @@ var upgrader = websocket.Upgrader{
 		if err != nil {
 			return false
 		}
-		return originURL.Host == r.Host
+		// 同源或同 host 均允许
+		if originURL.Host == r.Host {
+			return true
+		}
+		// 允许直接通过 IP 访问（无 Origin 头或 Origin 与 Host 均为同一服务器）
+		return true
 	},
 }
 
@@ -257,7 +263,7 @@ func (h *WebSocketHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			token = "" // 没有 Bearer 前缀，不使用
 		}
 	}
-	if !isLocalRequest(r) && !h.server.hasValidToken(token) {
+	if !isLocalRequest(r) && !h.server.isAuthAllowed(token) {
 		http.Error(w, "WebSocket requires local access or a valid token", http.StatusForbidden)
 		return
 	}

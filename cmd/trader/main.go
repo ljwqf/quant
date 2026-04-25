@@ -987,6 +987,11 @@ func main() {
 			Running:    running,
 			LastUpdate: time.Now(),
 		}
+		if managed, ok := managedStrategies[name]; ok && managed.params != nil {
+			if w, ok := managed.params["weight"].(float64); ok {
+				status.Weight = w
+			}
+		}
 		if metrics != nil {
 			if pnl, ok := metrics["pnl"].(float64); ok {
 				status.PnL = pnl

@@ -399,7 +399,7 @@ function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     const themeIcon = document.querySelector('.theme-icon');
     if (themeIcon) {
-        themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+        themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
     }
 }
 
@@ -608,7 +608,7 @@ function updateSystemStatus(data) {
     setValue('daily-pnl', formatNumber(data.daily_pnl), data.daily_pnl >= 0 ? 'positive' : 'negative');
     setValue('win-rate', formatPercent(data.win_rate));
     setValue('total-trades', data.total_trades);
-    setValue('uptime', data.uptime || '--');
+    setValue('uptime', formatDuration(data.uptime) || '--');
     
     // 根据交易所连接状态更新显示
     updateExchangeConnectionStatus(data.exchange_connected);

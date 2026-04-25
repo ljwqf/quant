@@ -1,5 +1,85 @@
 # OKX 量化交易系统 - 变更记录
 
+**日期**：2026-04-25
+
+---
+
+## 十三、WebSocket 连接修复 + Web 面板多项修复 (2026-04-25)
+
+### 13.1 CRITICAL: WebSocket 远程连接被 403 拒绝
+
+**问题**: 未配置 `apiToken` 时，`hasValidToken("")` 永远返回 `false`，远程请求（非 127.0.0.1）全部被拒绝
+**修复**:
+- 新增 `isAuthAllowed()` 方法：未配置 token 时允许所有请求
+- `CheckOrigin` 放宽容忍直接 IP 访问
+**文件**: `internal/api/websocket.go`, `internal/api/server.go`, `internal/api/server_test.go`
+
+### 13.2 MEDIUM: 运行时间显示 Go 原始格式
+
+**问题**: `436.078μs` 直接显示，未格式化
+**修复**: `updateSystemStatus()` 中 uptime 字段增加 `formatDuration()` 调用
+**文件**: `web/static/js/app.js:611`
+
+### 13.3 LOW: 策略权重列始终显示 `--`
+
+**问题**: 后端 `StrategyStatus` 缺少 `Weight` 字段
+**修复**: 结构体添加 `Weight float64`；`buildStrategyStatus` 从 params 中提取 weight
+**文件**: `internal/api/server.go`, `cmd/trader/main.go`
+
+### 13.4 LOW: MACD 参数布局溢出
+
+**问题**: 指标参数容器 `flex: 2; min-width: 200px` 空间不足，第 3 个参数不可见
+**修复**: 参数容器 `flex: 3; min-width: 300px`，刷新按钮 `min-width: 100px`
+**文件**: `web/index.html`
+
+### 13.5 LOW: 主题切换图标语义修正
+
+**问题**: 暗色模式显示 ☀️（目标语义），改为 🌙（状态语义）
+**修复**: 翻转图标映射
+**文件**: `web/static/js/app.js:402`
+
+### 部署状态
+- 已部署到腾讯云 132.232.231.41（PID 2334153）
+- Web 面板 HTTP 200 正常，策略信号正常触发
+- RackNerd 服务器 SSH 超时，暂缓部署
+
+---
+
+**日期**：2026-04-23
+
+---
+
+## 十二、Web 面板截图审查 + 用户体验改进项 (2026-04-23)
+
+### 12.1 Web 面板 Bug 修复（已记录，待修复）
+
+| # | 问题 | 优先级 | 涉及文件 |
+|---|------|--------|----------|
+| 1 | 运行时间显示 Go 原始格式 `436.078μs` | MEDIUM | `web/static/js/app.js:611` |
+| 2 | WebSocket 连接失败（"未连接"） | HIGH | `web/static/js/app.js:407-430` |
+| 3 | MACD 参数布局溢出（信号线周期不可见） | LOW | `web/index.html:71-110` |
+| 4 | 策略表"权重"列始终显示 `--`（前后端字段不匹配） | LOW | `internal/api/server.go:176` |
+| 5 | 主题切换图标语义歧义（暗色模式显示☀️） | LOW | `web/static/js/app.js:402` |
+
+详见 `memory/session_status_2026_04_23.md` 中的详细分析。
+
+### 12.2 用户体验改进项（新增需求）
+
+#### UX1: 技术指标可视化交互不友好 — 时间周期和技术指标应改为 Tab 式切换
+**优先级**: MEDIUM
+**问题**: 当前时间周期和技术指标均通过 `<select>` 下拉框选择，需 3 次点击才能完成一次切换，不符合交易所交互习惯
+**改进方案**: 将 `<select>` 改为一排可点击的 Tab 按钮，点击即切换，参考币安/OKX 的 K 线图表交互
+**涉及文件**: `web/index.html`, `web/static/css/style.css`, `web/static/js/app.js`
+
+#### UX2: 当前策略难以成交或策略逻辑可能存在问题
+**优先级**: HIGH
+**问题**: 9 个策略全部运行中但交易次数为 0，MeanReversionStrategy 下单失败（OKX 51137）
+**可能原因**: WebSocket 断连导致 OnTick 回调不触发 / 策略信号阈值过高 / 风控拦截 / 模拟盘价格偏差
+**排查建议**: 先修复 WS 连接，再查看策略信号生成日志和风控拦截日志
+**涉及文件**: `internal/strategy/*.go`, `internal/risk/risk.go`, `cmd/trader/main.go`
+
+---
+
 **日期**：2026-04-22
 
 ---
