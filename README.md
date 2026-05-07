@@ -1,8 +1,10 @@
 # OKX量化交易系统
 
-> **版本:** 1.4.0 | **更新日期:** 2026-04-17 | **状态:** ✅ 静态资源本地化，API 认证完善
+> **版本:** 2.0-dev | **分支:** `arch-v2-liquidity` | **状态:** V2 五层架构重构进行中
 
-这是一个基于Go语言开发的OKX量化交易系统，支持自动交易、风险管理、回测和监控功能。
+基于 Go 语言开发的 OKX 量化交易系统。V1 已完成全部核心功能并通过生产可行性验证（CRITICAL + HIGH 问题全部修复），当前正在推进 **V2 五层架构重构**——设计哲学从"看涨跌"转向"只看流动性墙的坍缩与真空的填充"。
+
+> **V2 架构文档**: [docs/V2_ARCHITECTURE_PLAN.md](docs/V2_ARCHITECTURE_PLAN.md) | **V1 用户手册**: [docs/USER_MANUAL.md](docs/USER_MANUAL.md) | **变更记录**: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 功能特性
 
@@ -27,52 +29,57 @@
 ```
 quant/
 ├── cmd/
-│   └── trader/           # 主程序入口
-│       ├── main.go       # 启动流程
-│       └── *_test.go     # 启动测试
-├── configs/              # 配置文件（sim/prod）
-├── data/                 # 运行时数据目录
+│   └── trader/           # 主程序入口（V1）
+│       ├── main.go       # 启动流程、组件组装
+│       └── subscriptions.go # 行情订阅 → 策略回调链
+├── configs/              # 配置文件
+│   ├── config.yaml       # 默认配置
+│   ├── config.sim.yaml   # 模拟盘
+│   └── config.prod.yaml  # 实盘
 ├── deployments/          # 部署配置
-│   └── k8s/              # Kubernetes 部署 YAML
+│   ├── k8s/              # Kubernetes 部署 YAML
+│   └── private/          # 双服务器部署记录（.gitignore）
 ├── docs/                 # 文档
-│   ├── CHANGELOG.md      # 变更记录
-│   ├── ENHANCEMENT_PLAN.md  # 增强计划
-│   ├── PRODUCTION_ROADMAP.md # 生产路线图
-│   └── USER_MANUAL.md    # 用户手册
-├── internal/
-│   ├── api/              # HTTP API 服务器 + WebSocket
-│   │   ├── audit.go      # 审计日志（14种事件类型）
-│   │   └── ip_whitelist.go # IP白名单中间件
-│   ├── backtest/         # 回测引擎
-│   ├── config/           # 配置管理
-│   ├── dataservice/      # 数据采集（新闻/经济日历）
-│   ├── exchange/         # 交易所接口抽象
-│   │   └── okx/          # OKX API（REST + WebSocket）
-│   ├── execution/        # 订单执行 + 对账服务
-│   ├── indicator/        # 技术指标计算
+│   ├── V2_ARCHITECTURE_PLAN.md  # V2 五层架构重构计划（30 步安全切片）
+│   ├── CHANGELOG.md      # 变更记录（含历史归档）
+│   └── USER_MANUAL.md    # V1 用户手册
+├── internal/             # 内部包（V1）
+│   ├── api/              # HTTP API + WebSocket（3441 行）
+│   ├── exchange/okx/     # OKX REST + WebSocket 客户端
+│   ├── execution/        # 订单执行引擎（3112 行）
+│   ├── risk/             # 风控引擎
+│   ├── strategy/         # 9 种交易策略
+│   ├── config/           # 配置加载（viper）
+│   ├── monitoring/       # Prometheus + 资金费率 + 实时 PnL
+│   ├── notifications/    # 钉钉/企微/Telegram/Discord/Email
+│   ├── storage/          # SQLite + 仓储层
 │   ├── llmanalysis/      # LLM 智能分析
-│   ├── manualtrading/    # 手动交易（条件单/限时单）
-│   ├── monitoring/       # 系统监控 + Prometheus + 资金费率
-│   ├── notifications/    # 多渠道通知（Webhook/钉钉/企微）
-│   ├── risk/             # 风控管理
-│   ├── storage/          # 数据库 + 仓储层
-│   └── strategy/         # 交易策略（8种）
-├── pkg/
-│   ├── errors/           # 错误处理
-│   ├── logger/           # 日志系统（zap）
-│   ├── persistence/      # 持久化抽象
-│   └── types/            # 核心类型定义
+│   ├── manualtrading/    # 手动交易
+│   ├── dataservice/      # 新闻/经济数据采集
+│   ├── backtest/         # 回测引擎
+│   ├── indicator/        # 技术指标
+│   └── alertservice/     # 提醒服务
+├── internal/v2/          # V2 五层架构（重构中）
+│   ├── ingestion/        # 第一层：数据与感知
+│   ├── computation/      # 第二层：计算与衍生
+│   ├── decision/         # 第三层：决策与大脑
+│   ├── execution/        # 第四层：风控与执行
+│   ├── monitor/          # 第五层：监控与日志
+│   ├── events/           # channel 事件类型定义
+│   └── adapter/          # V1→V2 适配器（防腐层）
+├── pkg/                  # 公共包
+│   ├── types/            # 核心类型（Order, Signal, Tick, Bar...）
+│   ├── logger/           # zap 日志
+│   └── errors/           # 错误处理
 ├── web/                  # Web 仪表盘
-│   ├── index.html
+│   ├── index.html        # V1 面板
+│   ├── config.html       # 配置页面
 │   └── static/
 │       ├── css/style.css
 │       └── js/
-│           ├── app.js
-│           └── chart.min.js  # Chart.js 本地副本（替代 CDN）
-├── .github/workflows/
-│   └── ci.yml            # CI/CD 流水线
+│           ├── app.js    # V1 前端逻辑（3139 行）
+│           └── chart.min.js
 ├── Dockerfile            # 多阶段 Docker 构建
-├── .dockerignore         # Docker 排除配置
 ├── go.mod
 └── README.md
 ```
@@ -166,22 +173,33 @@ kubectl apply -f deployments/k8s/
 
 详见 `deployments/k8s/README.md`。
 
-## 项目状态（2026-04-16）
+## 项目状态（2026-04-26）
+
+### V1 状态（已完成）
 
 | 维度 | 状态 |
 |------|------|
-| P0 项 | 10/10 (100%) ✅ |
-| P1 项 | 37/37 (100%) ✅ |
-| 构建 | `go build` / `go vet` 通过，零警告 |
-| 测试 | 20 个测试包全部通过 |
-| 安全扫描 | 无密钥泄露、无 SQL/命令注入 |
-| 资源管理 | Ticker/HTTP Body/Mutex 全部正确释放 |
-| 恢复机制 | WS 重连、REST 重试、数据源降级均就绪 |
+| CRITICAL 问题 | 3/3 全部修复 ✅ |
+| HIGH 问题 | 4/4 全部修复 ✅ |
+| P0 检查项 | 10/10 (100%) ✅ |
+| P1 检查项 | 37/37 (100%) ✅ |
+| 构建 | `go build` / `go vet` 通过 |
+| 部署 | 腾讯云 + RackNerd 双服务器运行中 |
 
-详见：
-- `spec/checklist.md` — 上线前检查清单
-- `docs/ENHANCEMENT_PLAN.md` — 增强实施计划
-- `docs/CHANGELOG.md` — 变更记录
+### V2 状态（进行中）
+
+| Phase | 状态 | 说明 |
+|-------|------|------|
+| Phase 0 基础设施 | 待开始 | V2 目录、接口、适配器 |
+| Phase 1 数据感知层 | 待开始 | TickStream + OrderBookBuilder |
+| Phase 2 计算衍生层 | 待开始 | 流动性墙 + 耗散速率 |
+| Phase 3 决策大脑层 | 待开始 | 状态机 + 模糊评分 |
+| Phase 4 风控执行层 | 待开始 | ProfitPool + 行为止损 |
+| Phase 5 监控日志层 | 待开始 | KillAll + 快照存证 |
+| Phase 6 Web 面板 | 待开始 | V2 独立面板 |
+| Phase 7 部署切换 | 待开始 | 双轨运行 → V2 独立 |
+
+详见 `docs/V2_ARCHITECTURE_PLAN.md`
 
 ## 配置说明
 

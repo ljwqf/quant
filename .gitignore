@@ -74,3 +74,6 @@ data/runtime/
 
 # Private deployment info (IPs, SSH keys, internal configs)
 deployments/private/
+
+# Claude Code local settings
+.claude/settings.local.json
