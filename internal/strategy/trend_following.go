@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -111,29 +112,49 @@ func (s *TrendFollowingStrategy) Init(params map[string]interface{}) error {
 		s.params[k] = v
 	}
 
-	if period, ok := params["ema_short_period"].(int); ok && period > 0 {
-		s.emaShortPeriod = period
+	// 读取并验证参数
+	s.emaShortPeriod = getInt(params, "ema_short_period", DefaultTrendEMAShortPeriod)
+	if err := validateIntRange(s.emaShortPeriod, 2, 100, "ema_short_period"); err != nil {
+		return err
 	}
-	if period, ok := params["ema_long_period"].(int); ok && period > 0 {
-		s.emaLongPeriod = period
+
+	s.emaLongPeriod = getInt(params, "ema_long_period", DefaultTrendEMALongPeriod)
+	if err := validateIntRange(s.emaLongPeriod, 5, 200, "ema_long_period"); err != nil {
+		return err
 	}
-	if period, ok := params["adx_period"].(int); ok && period > 0 {
-		s.adxPeriod = period
+
+	if s.emaShortPeriod >= s.emaLongPeriod {
+		return fmt.Errorf("ema_short_period (%d) must be less than ema_long_period (%d)", s.emaShortPeriod, s.emaLongPeriod)
 	}
-	if threshold, ok := params["adx_threshold"].(float64); ok && threshold > 0 {
-		s.adxThreshold = threshold
+
+	s.adxPeriod = getInt(params, "adx_period", DefaultTrendADXPeriod)
+	if err := validateIntRange(s.adxPeriod, 2, 50, "adx_period"); err != nil {
+		return err
 	}
-	if strength, ok := params["trend_strength"].(float64); ok && strength > 0 {
-		s.trendStrength = strength
+
+	s.adxThreshold = getFloat64(params, "adx_threshold", DefaultTrendADXThreshold)
+	if err := validateFloatRange(s.adxThreshold, 0, 100, "adx_threshold"); err != nil {
+		return err
 	}
-	if percent, ok := params["stop_loss_percent"].(float64); ok && percent > 0 {
-		s.stopLossPercent = percent
+
+	s.trendStrength = getFloat64(params, "trend_strength", DefaultTrendStrength)
+	if err := validateFloatRange(s.trendStrength, 0.001, 0.5, "trend_strength"); err != nil {
+		return err
 	}
-	if percent, ok := params["trailing_stop_percent"].(float64); ok && percent > 0 {
-		s.trailingStopPercent = percent
+
+	s.stopLossPercent = getFloat64(params, "stop_loss_percent", DefaultTrendStopLossPercent)
+	if err := validateFloatRange(s.stopLossPercent, 0.001, 0.5, "stop_loss_percent"); err != nil {
+		return err
 	}
-	if cooldown, ok := params["signal_cooldown"].(int64); ok && cooldown > 0 {
-		s.signalCooldown = cooldown
+
+	s.trailingStopPercent = getFloat64(params, "trailing_stop_percent", DefaultTrendTrailingStopPercent)
+	if err := validateFloatRange(s.trailingStopPercent, 0.001, 0.5, "trailing_stop_percent"); err != nil {
+		return err
+	}
+
+	s.signalCooldown = int64(getInt(params, "signal_cooldown", int(DefaultTrendSignalCooldown)))
+	if err := validatePositiveInt(int(s.signalCooldown), "signal_cooldown"); err != nil {
+		return err
 	}
 
 	logger.Info("TrendFollowingStrategy初始化完成",
@@ -502,6 +523,9 @@ func (s *TrendFollowingStrategy) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		s.params[k] = v
 	}
+
+	// 热更新：参数变化后立即重新计算指标，避免等待下一个 Bar
+	s.updateIndicators()
 }
 
 func (s *TrendFollowingStrategy) GetMetrics() map[string]interface{} {
@@ -580,4 +604,84 @@ func (s *TrendFollowingStrategy) UpdateOnChainData(netflow, sopr, mvrv float64) 
 		zap.Float64("sopr", sopr),
 		zap.Float64("mvrv", mvrv),
 	)
+}
+
+func (s *TrendFollowingStrategy) GetParamSchema() ParamSchema {
+	return ParamSchema{
+		StrategyName: s.name,
+		Params: []ParamDefinition{
+			{
+				Name:         "ema_short_period",
+				Type:         ParamTypeInt,
+				DefaultValue: DefaultTrendEMAShortPeriod,
+				MinValue:     2,
+				MaxValue:     100,
+				Required:     false,
+				Description:  "短期EMA周期",
+			},
+			{
+				Name:         "ema_long_period",
+				Type:         ParamTypeInt,
+				DefaultValue: DefaultTrendEMALongPeriod,
+				MinValue:     5,
+				MaxValue:     200,
+				Required:     false,
+				Description:  "长期EMA周期",
+			},
+			{
+				Name:         "adx_period",
+				Type:         ParamTypeInt,
+				DefaultValue: DefaultTrendADXPeriod,
+				MinValue:     2,
+				MaxValue:     50,
+				Required:     false,
+				Description:  "ADX周期",
+			},
+			{
+				Name:         "adx_threshold",
+				Type:         ParamTypeFloat,
+				DefaultValue: DefaultTrendADXThreshold,
+				MinValue:     0.0,
+				MaxValue:     100.0,
+				Required:     false,
+				Description:  "ADX趋势强度阈值",
+			},
+			{
+				Name:         "trend_strength",
+				Type:         ParamTypeFloat,
+				DefaultValue: DefaultTrendStrength,
+				MinValue:     0.001,
+				MaxValue:     0.5,
+				Required:     false,
+				Description:  "趋势强度阈值",
+			},
+			{
+				Name:         "stop_loss_percent",
+				Type:         ParamTypeFloat,
+				DefaultValue: DefaultTrendStopLossPercent,
+				MinValue:     0.001,
+				MaxValue:     0.5,
+				Required:     false,
+				Description:  "止损百分比",
+			},
+			{
+				Name:         "trailing_stop_percent",
+				Type:         ParamTypeFloat,
+				DefaultValue: DefaultTrendTrailingStopPercent,
+				MinValue:     0.001,
+				MaxValue:     0.5,
+				Required:     false,
+				Description:  "移动止损百分比",
+			},
+			{
+				Name:         "signal_cooldown",
+				Type:         ParamTypeInt,
+				DefaultValue: int(DefaultTrendSignalCooldown),
+				MinValue:     1,
+				MaxValue:     86400,
+				Required:     false,
+				Description:  "信号冷却时间（秒）",
+			},
+		},
+	}
 }

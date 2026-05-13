@@ -25,6 +25,8 @@ risk:
   stop_loss_percent: 0.02
   take_profit_percent: 0.05
   max_trades_per_day: 100
+  max_risk_per_trade: 0.02
+  max_exposure_per_symbol: 0.3
 
 execution:
   enable_strategy_take_profit: true
@@ -79,6 +81,8 @@ monitoring:
 strategy:
   enable: false
   name: "example_strategy"
+  default_symbol: "BTC-USDT"
+  default_bar_interval: "1m"
   params: {}
   delta_neutral:
     fund_usage_percent: 0.9

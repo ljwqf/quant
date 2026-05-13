@@ -77,6 +77,14 @@ type TradeDecisionData struct {
 	MarketCondition  string
 }
 
+// OrderData 订单数据
+type OrderData struct {
+	Orders           []map[string]interface{}
+	TimeRange        string
+	AnalysisType     string // active, historical, all
+	Symbol           string
+}
+
 // GetTechnicalAnalysisPrompt 获取技术分析提示词
 func GetTechnicalAnalysisPrompt(data *TechnicalAnalysisData) *PromptTemplate {
 	systemPrompt := `你是一位资深的加密货币技术分析师，专注于技术指标分析和市场趋势判断。
@@ -299,6 +307,45 @@ func BuildMessages(template *PromptTemplate) []Message {
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+// GetOrderAnalysisPrompt 获取订单分析提示词
+func GetOrderAnalysisPrompt(data *OrderData) *PromptTemplate {
+	systemPrompt := `你是一位资深的加密货币订单分析师，专注于订单执行质量和交易模式分析。
+请基于提供的订单数据，进行专业的分析，并给出明确的分析结论。
+
+分析要求：
+1. 分析订单执行质量（滑点、成交率、执行速度）
+2. 评估交易模式和策略效果
+3. 识别订单执行中的问题和优化空间
+4. 分析订单时间分布和市场影响
+5. 给出订单管理和执行的改进建议
+
+输出格式：
+- 执行质量：[优秀/良好/一般/差]
+- 风险等级：[低/中/高]
+- 模式分析：[描述]
+- 问题识别：[描述]
+- 改进建议：[具体建议内容]
+- 详细分析：[具体分析内容]`
+
+	userPrompt := fmt.Sprintf(`请分析以下订单数据：
+
+分析类型：%s
+时间范围：%s
+交易对：%s
+订单数量：%d
+
+订单详情：
+%v
+
+请进行全面的订单分析。`,
+		data.AnalysisType, data.TimeRange, data.Symbol, len(data.Orders), data.Orders)
+
+	return &PromptTemplate{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+	}
 }
 
 // ParseAnalysisResult 解析分析结果

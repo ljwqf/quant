@@ -17,8 +17,12 @@ type DataService struct {
 	cfg             *config.Config
 	db              *storage.Database
 	cryptoquant     *cryptoquant.Client
+	cryptoNews      *CryptoNewsClient
+	economicCalendar *EconomicCalendarClient
 	newsRepo        repository.NewsEventRepository
 	economicRepo    repository.EconomicEventRepository
+	sourceManager   *SourceManager
+	dataQueue       DataQueue
 	running         bool
 	stopCh          chan struct{}
 	wg              sync.WaitGroup
@@ -33,14 +37,53 @@ func NewDataService(cfg *config.Config, db *storage.Database) *DataService {
 		logger.Info("CryptoQuant 客户端初始化成功")
 	}
 
-	return &DataService{
-		cfg:          cfg,
-		db:           db,
-		cryptoquant:  cqClient,
-		newsRepo:     repository.NewNewsEventRepository(db.DB()),
-		economicRepo: repository.NewEconomicEventRepository(db.DB()),
-		stopCh:       make(chan struct{}),
+	service := &DataService{
+		cfg:           cfg,
+		db:            db,
+		cryptoquant:   cqClient,
+		cryptoNews:    NewCryptoNewsClient(nil),
+		economicCalendar: NewEconomicCalendarClient(nil),
+		newsRepo:      repository.NewNewsEventRepository(db.DB()),
+		economicRepo:  repository.NewEconomicEventRepository(db.DB()),
+		sourceManager: NewSourceManager(),
+		dataQueue:     NewMemoryQueue(1000),
+		stopCh:        make(chan struct{}),
 	}
+
+	service.initDefaultSources()
+	return service
+}
+
+// initDefaultSources 初始化默认数据源
+func (s *DataService) initDefaultSources() {
+	if s.cfg.Exchange.OKX.APIKey != "" {
+		okxSource := NewOKXSource()
+		config := map[string]interface{}{
+			"api_key":    s.cfg.Exchange.OKX.APIKey,
+			"secret_key": s.cfg.Exchange.OKX.SecretKey,
+			"passphrase": s.cfg.Exchange.OKX.Passphrase,
+			"simulated":  s.cfg.Exchange.OKX.Simulated,
+		}
+		if err := okxSource.Initialize(config); err != nil {
+			logger.Warn("初始化OKX数据源失败", zap.Error(err))
+		} else {
+			if err := s.sourceManager.RegisterSource(okxSource); err != nil {
+				logger.Warn("注册OKX数据源失败", zap.Error(err))
+			}
+		}
+	} else {
+		logger.Info("OKX配置未提供，跳过OKX数据源初始化")
+	}
+}
+
+// SourceManager 获取数据源管理器
+func (s *DataService) SourceManager() *SourceManager {
+	return s.sourceManager
+}
+
+// DataQueue 获取数据队列
+func (s *DataService) DataQueue() DataQueue {
+	return s.dataQueue
 }
 
 // Start 启动数据采集服务
@@ -144,7 +187,12 @@ func (s *DataService) collectAllData() {
 // collectNewsData 采集新闻数据
 func (s *DataService) collectNewsData() {
 	logger.Debug("采集新闻数据")
-	newsEvents := s.getMockNewsData()
+
+	newsEvents, err := s.cryptoNews.FetchNews()
+	if err != nil {
+		logger.Warn("获取新闻失败，使用模拟数据", zap.Error(err))
+		newsEvents = s.getMockNewsData()
+	}
 
 	for _, event := range newsEvents {
 		if err := s.newsRepo.Create(event); err != nil {
@@ -156,7 +204,12 @@ func (s *DataService) collectNewsData() {
 // collectEconomicData 采集经济事件数据
 func (s *DataService) collectEconomicData() {
 	logger.Debug("采集经济事件数据")
-	economicEvents := s.getMockEconomicData()
+
+	economicEvents, err := s.economicCalendar.FetchEvents()
+	if err != nil {
+		logger.Warn("获取经济事件失败，使用模拟数据", zap.Error(err))
+		economicEvents = s.getMockEconomicData()
+	}
 
 	for _, event := range economicEvents {
 		if err := s.economicRepo.Create(event); err != nil {

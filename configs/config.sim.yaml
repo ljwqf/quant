@@ -1,0 +1,206 @@
+# OKX量化交易系统 - 模拟盘配置
+# 警告: 此配置用于模拟盘测试，不会使用真实资金
+
+# 基本配置
+basic:
+  app_name: "okx-quant"
+  env: "simulation"
+  log_level: "debug"
+  log_file: "./logs/okx-quant-sim.log"
+
+# 交易所配置
+exchange:
+  okx:
+    api_key: "${OKX_API_KEY}"
+    secret_key: "${OKX_SECRET_KEY}"
+    passphrase: "${OKX_PASSPHRASE}"
+    base_url: "https://www.okx.com"
+    ws_url: "wss://ws.okx.com:8443/ws/v5/public"
+    timeout: 30s
+    retry_count: 3
+    simulated: true  # 模拟盘模式
+
+# 风险管理配置 - 模拟盘可以更宽松
+risk:
+  enable: true
+  max_position_size: 10000
+  max_daily_loss: 1000
+  max_drawdown: 0.1
+  stop_loss_percent: 0.05
+  take_profit_percent: 0.1
+  max_trades_per_day: 100
+  max_risk_per_trade: 0.03
+  max_exposure_per_symbol: 0.4
+
+execution:
+  enable_strategy_take_profit: true
+  persistence:
+    enabled: true
+    directory: "./data/runtime"
+    snapshot_interval: 30s
+  smart_routing:
+    order_book_depth: 20
+    max_estimated_slippage: 0.0025
+  rebalance:
+    enabled: true
+    reduce_only: true
+    drift_threshold: 0.1
+    use_market_orders: true
+    max_positions_per_cycle: 2
+    circuit_auto_reset: true
+    circuit_cooldown: 15m
+  allocator:
+    min_weight: 0.1
+    max_weight: 0.7
+    weight_change_threshold: 0.15
+    cooldown_duration: 24h
+    rebalance_interval: 4h
+    portfolio_loss_limit: 0.05
+
+# 回测配置
+backtest:
+  enable: true
+  initial_balance: 10000
+  data_dir: "./data"
+  result_dir: "./results"
+
+# 监控配置
+monitoring:
+  enable: true
+  check_interval: 30s
+  alert_threshold:
+    max_drawdown: 0.15
+    max_loss: 1500
+    position_limit: 15000
+    order_timeout: 5m
+  metrics:
+    enable: true
+    push_gateway_url: ""
+  alert:
+    enable: true
+    channels:
+      - "console"
+      - "webhook"
+    webhook_url: ""
+    dedup_window: 30s
+    min_interval: 10s
+
+# 策略配置
+strategy:
+  enable: true
+  name: "simulation_strategy"
+  default_symbol: "BTC-USDT"
+  default_bar_interval: "1m"
+  params:
+    param1: 1
+    param2: 2
+  delta_neutral:
+    fund_usage_percent: 0.9
+    rebalance_threshold: 0.02
+    basis_circuit_breaker: 0.01
+    target_hedge_ratio: 1.0
+    hedge_ratio_tolerance: 0.05
+    daily_loss_limit: 0.02
+    margin_buffer_percent: 0.1
+    settlement_window_before: 30m
+    settlement_window_after: 30m
+  smart_filter:
+    source: "cryptoquant"
+    cryptoquant:
+      api_key: "${CRYPTOQUANT_API_KEY}"
+      asset: "btc"
+      assets:
+        - "btc"
+        - "eth"
+  trend_following:
+    ema_short_period: 12
+    ema_long_period: 26
+    adx_period: 14
+    adx_threshold: 25.0
+    trend_strength: 0.02
+    stop_loss_percent: 0.05
+    trailing_stop_percent: 0.03
+    signal_cooldown: 3600
+  mean_reversion:
+    rsi_period: 14
+    rsi_overbought: 70.0
+    rsi_oversold: 30.0
+    bb_period: 20
+    bb_std_dev: 2.0
+    threshold: 0.02
+    stop_loss_percent: 0.05
+    trailing_stop_percent: 0.03
+    signal_cooldown: 3600
+  volatility_breakout:
+    atr_period: 14
+    volume_ma_period: 20
+    breakout_multiplier: 1.5
+    min_volume_ratio: 1.2
+    max_holding_bars: 10
+    stop_loss_percent: 0.03
+    trailing_stop_percent: 0.02
+    signal_cooldown: 3600
+
+# 服务器配置
+server:
+  enable: true
+  port: 8765
+  host: "0.0.0.0"
+
+# 数据库配置
+database:
+  enable: true
+  type: "sqlite"
+  path: "./data/quant-sim.db"
+
+# 手动交易配置
+manual_trading:
+  enable: true
+  risk_check: true
+  order_confirmation: true
+
+# 大模型配置
+llm:
+  enable: true
+  provider: "openai"
+  providers:
+    openai:
+      api_key: "${OPENAI_API_KEY}"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4"
+      temperature: 0.7
+      max_tokens: 2000
+    claude:
+      api_key: "${CLAUDE_API_KEY}"
+      base_url: "https://api.anthropic.com"
+      model: "claude-3-opus-20240229"
+      temperature: 0.7
+      max_tokens: 2000
+    qwen:
+      api_key: "${QWEN_API_KEY}"
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      model: "qwen-max"
+      temperature: 0.7
+      max_tokens: 2000
+  timeout: 30s
+
+# 数据采集配置
+data_collector:
+  news:
+    enable: true
+    sources:
+      - "cryptopanic"
+      - "coindesk"
+    refresh_interval: 5m
+  economic:
+    enable: true
+    refresh_interval: 1h
+
+# 提醒服务配置
+alert:
+  enable: true
+  channels:
+    - "web"
+    - "webhook"
+  price_change_threshold: 0.05
+  check_interval: 1m

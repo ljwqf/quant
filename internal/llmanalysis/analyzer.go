@@ -24,6 +24,8 @@ const (
 	AnalysisTypePosition AnalysisType = "position"
 	// AnalysisTypeMarket 市场概览分析
 	AnalysisTypeMarket AnalysisType = "market"
+	// AnalysisTypeOrders 订单分析
+	AnalysisTypeOrders AnalysisType = "orders"
 )
 
 // AnalysisResult 分析结果
@@ -39,9 +41,9 @@ type AnalysisResult struct {
 
 // Analyzer 分析引擎
 type Analyzer struct {
-	client       *Client
-	aiRepo       repository.AIAnalysisRepository
-	model        string
+	client *Client
+	aiRepo repository.AIAnalysisRepository
+	model  string
 }
 
 // NewAnalyzer 创建分析引擎
@@ -51,8 +53,10 @@ func NewAnalyzer(client *Client, db *storage.Database, cfg *config.LLMConfig) *A
 		return nil
 	}
 
+	provider := ""
 	model := ""
 	if cfg != nil {
+		provider = cfg.Provider
 		switch cfg.Provider {
 		case "openai":
 			model = cfg.Providers.OpenAI.Model
@@ -61,16 +65,54 @@ func NewAnalyzer(client *Client, db *storage.Database, cfg *config.LLMConfig) *A
 		case "qwen":
 			model = cfg.Providers.Qwen.Model
 		}
-		if model == "" {
-			model = "gpt-4"
-		}
+	}
+	if model == "" {
+		model = defaultModelForProvider(provider)
+	}
+
+	aiRepo := repository.AIAnalysisRepository(&noopAIAnalysisRepository{})
+	if db != nil {
+		aiRepo = repository.NewAIAnalysisRepository(db.DB())
 	}
 
 	return &Analyzer{
-		client:       client,
-		aiRepo:       repository.NewAIAnalysisRepository(db.DB()),
-		model:        model,
+		client: client,
+		aiRepo: aiRepo,
+		model:  model,
 	}
+}
+
+func defaultModelForProvider(provider string) string {
+	switch provider {
+	case "claude":
+		return "claude-3-5-sonnet"
+	case "qwen":
+		return "qwen-plus"
+	default:
+		return "gpt-4"
+	}
+}
+
+type noopAIAnalysisRepository struct{}
+
+func (r *noopAIAnalysisRepository) Create(_ *storage.AIAnalysis) error {
+	return nil
+}
+
+func (r *noopAIAnalysisRepository) GetByID(_ int64) (*storage.AIAnalysis, error) {
+	return nil, nil
+}
+
+func (r *noopAIAnalysisRepository) ListBySymbol(_ string, _ int, _ int) ([]*storage.AIAnalysis, error) {
+	return []*storage.AIAnalysis{}, nil
+}
+
+func (r *noopAIAnalysisRepository) ListByType(_ string, _ int, _ int) ([]*storage.AIAnalysis, error) {
+	return []*storage.AIAnalysis{}, nil
+}
+
+func (r *noopAIAnalysisRepository) GetLatestBySymbolAndType(_, _ string) (*storage.AIAnalysis, error) {
+	return nil, nil
 }
 
 // AnalyzeTrade 交易前分析
@@ -135,13 +177,56 @@ func (a *Analyzer) AnalyzePosition(ctx context.Context, symbol string, positionD
 		return nil, fmt.Errorf("大模型客户端未初始化")
 	}
 
-	tradeData := &TradeDecisionData{
-		Symbol:          symbol,
-		Side:            "hold",
-		MarketCondition: "existing_position",
+	// 提取持仓数据
+	side := fmt.Sprintf("%v", positionData["side"])
+	entryPrice, _ := positionData["entry_price"].(float64)
+	markPrice, _ := positionData["mark_price"].(float64)
+	size, _ := positionData["size"].(float64)
+	unrealizedPnL, _ := positionData["unrealized_pnl"].(float64)
+	leverage, _ := positionData["leverage"].(int)
+	pnlPercent, _ := positionData["pnl_percent"].(float64)
+	liquidation, _ := positionData["liquidation"].(float64)
+
+	systemPrompt := `你是一位资深的加密货币持仓风险分析师，专注于持仓评估和风险管理。
+请基于提供的持仓数据，进行全面的风险评估并给出明确的持仓建议。
+
+分析要求：
+1. 评估当前持仓的风险水平
+2. 分析盈亏状况和趋势
+3. 评估杠杆风险
+4. 评估清算风险（距离清算价格的百分比）
+5. 考虑市场环境对当前持仓的影响
+6. 给出明确的持仓建议（继续持有、减仓、平仓、调整止损）
+
+输出格式：
+- 风险等级：[低/中/高]
+- 持仓评级：[优秀/良好/一般/差]
+- 盈亏评估：[描述]
+- 杠杆风险：[描述]
+- 清算风险：[描述]
+- 最终建议：[持有/减仓/平仓/调整止损]
+- 详细分析：[具体分析内容]`
+
+	userPrompt := fmt.Sprintf(`请分析以下持仓：
+
+交易对：%s
+持仓方向：%s
+持仓数量：%.4f
+入场价格：%.2f
+标记价格：%.2f
+杠杆倍数：%dx
+未实现盈亏：%.2f USDT
+盈亏百分比：%.2f%%
+清算价格：%.2f
+
+请进行全面的持仓风险评估。`,
+		symbol, side, size, entryPrice, markPrice, leverage, unrealizedPnL, pnlPercent, liquidation)
+
+	template := &PromptTemplate{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
 	}
 
-	template := GetTradeDecisionPrompt(tradeData)
 	messages := BuildMessages(template)
 
 	req := &providers.ChatRequest{
@@ -160,7 +245,7 @@ func (a *Analyzer) AnalyzePosition(ctx context.Context, symbol string, positionD
 	parsed := ParseAnalysisResult(resp.Content)
 	summary := parsed["最终建议"]
 	if summary == "" {
-		summary = parsed["交易评级"]
+		summary = parsed["持仓评级"]
 	}
 	riskLevel := parsed["风险等级"]
 	if riskLevel == "" {
@@ -253,6 +338,67 @@ func (a *Analyzer) AnalyzeMarket(ctx context.Context, symbols []string) (*Analys
 	result := &storage.AIAnalysis{
 		AnalysisType: string(AnalysisTypeMarket),
 		Symbol:       "market",
+		Content:      resp.Content,
+		Suggestions:  summary,
+		RiskLevel:    riskLevel,
+		CreatedAt:    time.Now(),
+	}
+
+	if err := a.aiRepo.Create(result); err != nil {
+		logger.Warn("保存分析结果失败", zap.Error(err))
+	}
+
+	return &AnalysisResult{
+		ID:        result.ID,
+		Type:      result.AnalysisType,
+		Symbol:    result.Symbol,
+		Content:   result.Content,
+		Summary:   result.Suggestions,
+		RiskLevel: result.RiskLevel,
+		CreatedAt: result.CreatedAt,
+	}, nil
+}
+
+// AnalyzeOrders 订单分析
+func (a *Analyzer) AnalyzeOrders(ctx context.Context, data *OrderData) (*AnalysisResult, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("大模型客户端未初始化")
+	}
+
+	template := GetOrderAnalysisPrompt(data)
+	messages := BuildMessages(template)
+
+	req := &providers.ChatRequest{
+		Model:       a.model,
+		Messages:    convertMessages(messages),
+		Temperature: 0.7,
+		MaxTokens:   2000,
+	}
+
+	resp, err := a.client.Chat(ctx, req)
+	if err != nil {
+		logger.Error("订单分析失败", zap.Error(err))
+		return nil, fmt.Errorf("订单分析失败: %w", err)
+	}
+
+	parsed := ParseAnalysisResult(resp.Content)
+	summary := parsed["改进建议"]
+	if summary == "" {
+		summary = parsed["执行质量"]
+	}
+	riskLevel := parsed["风险等级"]
+	if riskLevel == "" {
+		riskLevel = "medium"
+	}
+
+	symbol := data.Symbol
+	if symbol == "" {
+		symbol = "all"
+	}
+
+	result := &storage.AIAnalysis{
+		AnalysisType: string(AnalysisTypeOrders),
+		Symbol:       symbol,
 		Content:      resp.Content,
 		Suggestions:  summary,
 		RiskLevel:    riskLevel,

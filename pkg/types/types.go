@@ -169,6 +169,7 @@ type Signal struct {
 	Price      float64     `json:"price,omitempty"`
 	Quantity   float64     `json:"quantity,omitempty"`
 	Confidence float64     `json:"confidence,omitempty"` // 信号置信度 (0-1)
+	Weight     float64     `json:"weight,omitempty"`     // 策略权重 (0-1)
 	Timestamp  time.Time   `json:"timestamp"`
 	Metadata   interface{} `json:"metadata,omitempty"` // 额外信息
 }
@@ -203,3 +204,45 @@ type Response struct {
 
 // Config 通用配置
 type Config map[string]interface{}
+
+// AlgoOrderType 算法单类型
+type AlgoOrderType string
+
+const (
+	AlgoOrderConditional AlgoOrderType = "conditional" // 条件单（止盈止损）
+)
+
+// AlgoOrder 算法单（条件单/止盈止损）
+type AlgoOrder struct {
+	AlgoID      string        `json:"algo_id"`
+	Symbol      string        `json:"symbol"`
+	Side        OrderSide     `json:"side"`
+	OrdType     AlgoOrderType `json:"ord_type"`
+	Size        float64       `json:"size"`
+	SlTriggerPx float64       `json:"sl_trigger_px"` // 止损触发价
+	SlOrderPx   float64       `json:"sl_order_px"`   // 止损委托价（-1=市价）
+	TpTriggerPx float64       `json:"tp_trigger_px"` // 止盈触发价
+	TpOrderPx   float64       `json:"tp_order_px"`   // 止盈委托价（-1=市价）
+	CloseFraction float64     `json:"close_fraction"` // 平仓比例（0-1）
+	ClientID    string        `json:"client_id"`
+	TdMode      string        `json:"td_mode"` // 保证金模式
+	State       string        `json:"state"`   // 状态
+}
+
+// AlgoOrderResult 算法单下单结果
+type AlgoOrderResult struct {
+	AlgoID    string    `json:"algo_id"`
+	Symbol    string    `json:"symbol"`
+	ClientID  string    `json:"client_id"`
+	Status    string    `json:"status"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// FundingRate 资金费率数据
+type FundingRate struct {
+	InstId           string    `json:"instId"`
+	FundingRate      float64   `json:"fundingRate"`
+	NextFundingRate  float64   `json:"nextFundingRate"`
+	NextSettlementTime time.Time `json:"nextFundingTime"`
+	Timestamp        time.Time `json:"timestamp"`
+}

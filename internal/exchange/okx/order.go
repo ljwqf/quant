@@ -1,11 +1,17 @@
 package okx
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
+	"go.uber.org/zap"
 )
 
 // PlaceOrder 下单
@@ -38,7 +44,9 @@ func (c *Client) GetOrder(orderID string) (*types.Order, error) {
 		}
 	}
 
-	return c.restClient.getOrder(orderID)
+	// 从订阅中获取已知交易对，避免硬编码
+	symbols := c.getKnownSymbols()
+	return c.restClient.getOrder(orderID, symbols)
 }
 
 // GetOrders 获取订单列表
@@ -55,18 +63,45 @@ func (c *Client) GetOrders(symbol string, limit int) ([]*types.Order, error) {
 // placeOrder 下单
 func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) {
 	// 构建下单请求
-	data := map[string]interface{}{
-		"instId": order.Symbol,
-		"tdMode": "isolated", // 隔离保证金模式
-		"side":   string(order.Side),
+	tdMode := r.config.MarginMode
+	if tdMode == "" {
+		isSwapContract := strings.HasSuffix(order.Symbol, "-SWAP")
+		if isSwapContract {
+			tdMode = "cross" // 合约使用全仓模式 (需要账户设置为保证金模式)
+		} else {
+			tdMode = "cash" // 现货使用 cash 模式
+		}
+	}
+
+	// OKX 合约下单 sz 必须为整数张数，现货可为小数
+	isSwapContract := strings.HasSuffix(order.Symbol, "-SWAP")
+	var szStr string
+	if isSwapContract {
+		contracts := int64(math.Round(order.Quantity))
+		if contracts < 1 {
+			contracts = 1 // 合约至少 1 张
+		}
+		szStr = strconv.FormatInt(contracts, 10)
+	} else {
+		szStr = strconv.FormatFloat(order.Quantity, 'f', -1, 64)
+	}
+
+	data := map[string]any{
+		"instId":  order.Symbol,
+		"tdMode":  tdMode,
+		"side":    string(order.Side),
 		"ordType": string(order.Type),
-		"sz":     fmt.Sprintf("%f", order.Quantity),
-		"lever":  fmt.Sprintf("%d", order.Leverage),
+		"sz":      szStr,
+	}
+
+	// cross/isolated 模式需要 lever 参数（合约和现货 margin 都需要）
+	if tdMode != "cash" {
+		data["lever"] = strconv.Itoa(order.Leverage)
 	}
 
 	// 限价单需要价格
 	if order.Type == types.OrderTypeLimit && order.Price > 0 {
-		data["px"] = fmt.Sprintf("%f", order.Price)
+		data["px"] = strconv.FormatFloat(order.Price, 'f', -1, 64)
 	}
 
 	// 添加客户端订单ID
@@ -74,7 +109,9 @@ func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) 
 		data["clOrdId"] = order.ClientID
 	}
 
-	respBody, err := r.request("POST", "/trade/order", nil, data)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	respBody, err := r.postRequestWithContext(ctx, "/trade/order", data)
 	if err != nil {
 		return nil, err
 	}
@@ -100,6 +137,11 @@ func (r *restClient) placeOrder(order *types.Order) (*types.OrderResult, error) 
 	}
 
 	if response.Code != "0" {
+		logger.Error("OKX 下单 API 返回错误",
+			zap.String("rawResponse", string(respBody)),
+			zap.String("code", response.Code),
+			zap.String("msg", response.Msg),
+		)
 		return nil, fmt.Errorf("API 错误: %s - %s", response.Code, response.Msg)
 	}
 
@@ -152,7 +194,9 @@ func (r *restClient) cancelOrder(orderID string) error {
 		"ordId": orderID,
 	}
 
-	respBody, err := r.request("POST", "/trade/cancel-order", nil, data)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	respBody, err := r.postRequestWithContext(ctx, "/trade/cancel-order", data)
 	if err != nil {
 		return err
 	}
@@ -175,15 +219,42 @@ func (r *restClient) cancelOrder(orderID string) error {
 }
 
 // getOrder 获取订单信息
-func (r *restClient) getOrder(orderID string) (*types.Order, error) {
+func (r *restClient) getOrder(orderID string, knownSymbols []string) (*types.Order, error) {
+	// 先尝试查询活跃订单（不需要 instId）
 	params := map[string]interface{}{
 		"ordId": orderID,
 	}
 
-	respBody, err := r.request("GET", "/trade/order", params, nil)
-	if err != nil {
-		return nil, err
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	respBody, err := r.requestWithContext(ctx, "GET", "/trade/order", params, nil)
+	if err == nil {
+		return r.parseOrderResponse(respBody)
 	}
+
+	// 活跃订单查询失败，尝试从历史订单中查找
+	// 使用已知交易对（从订阅中提取），避免硬编码
+	symbols := knownSymbols
+	if len(symbols) == 0 {
+		// 回退到常见交易对
+		symbols = []string{"BTC-USDT-SWAP", "ETH-USDT-SWAP", "BTC-USDT", "ETH-USDT"}
+	}
+	for _, symbol := range symbols {
+		historyParams := map[string]interface{}{
+			"instId": symbol,
+			"ordId":  orderID,
+		}
+		respBody, err := r.requestWithContext(ctx, "GET", "/trade/orders-history", historyParams, nil)
+		if err == nil {
+			return r.parseOrderResponse(respBody)
+		}
+	}
+
+	return nil, fmt.Errorf("未找到订单: %s", orderID)
+}
+
+func (r *restClient) parseOrderResponse(respBody []byte) (*types.Order, error) {
 
 	// 解析响应
 	var response struct {
@@ -218,12 +289,30 @@ func (r *restClient) getOrder(orderID string) (*types.Order, error) {
 	}
 
 	// 构建订单信息
-	quantity, _ := parseFloat(response.Data[0].Quantity)
-	price, _ := parseFloat(response.Data[0].Price)
-	averagePrice, _ := parseFloat(response.Data[0].AveragePrice)
-	filledQty, _ := parseFloat(response.Data[0].FilledQty)
-	leverage, _ := parseInt(response.Data[0].Leverage)
-	timestamp, _ := parseInt(response.Data[0].Timestamp)
+	quantity, err := parseFloat(response.Data[0].Quantity)
+	if err != nil {
+		logger.Warn("解析订单数量失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	price, err := parseFloat(response.Data[0].Price)
+	if err != nil {
+		logger.Warn("解析订单价格失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	averagePrice, err := parseFloat(response.Data[0].AveragePrice)
+	if err != nil {
+		logger.Warn("解析订单均价失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	filledQty, err := parseFloat(response.Data[0].FilledQty)
+	if err != nil {
+		logger.Warn("解析已成交数量失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	leverage, err := parseInt(response.Data[0].Leverage)
+	if err != nil {
+		logger.Warn("解析杠杆失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
+	timestamp, err := parseInt(response.Data[0].Timestamp)
+	if err != nil {
+		logger.Warn("解析时间戳失败", zap.String("orderId", response.Data[0].OrderID), zap.Error(err))
+	}
 
 	status := types.OrderStatusPending
 	switch response.Data[0].Status {
@@ -271,12 +360,14 @@ func (r *restClient) getOrder(orderID string) (*types.Order, error) {
 
 // getOrders 获取订单列表
 func (r *restClient) getOrders(symbol string, limit int) ([]*types.Order, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	params := map[string]interface{}{
 		"instId": symbol,
 		"limit":  limit,
 	}
 
-	respBody, err := r.request("GET", "/trade/orders-history", params, nil)
+	respBody, err := r.requestWithContext(ctx, "GET", "/trade/orders-history", params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -312,12 +403,30 @@ func (r *restClient) getOrders(symbol string, limit int) ([]*types.Order, error)
 	// 构建订单列表
 	orders := make([]*types.Order, 0, len(response.Data))
 	for _, data := range response.Data {
-		quantity, _ := parseFloat(data.Quantity)
-		price, _ := parseFloat(data.Price)
-		averagePrice, _ := parseFloat(data.AveragePrice)
-		filledQty, _ := parseFloat(data.FilledQty)
-		leverage, _ := parseInt(data.Leverage)
-		timestamp, _ := parseInt(data.Timestamp)
+		quantity, err := parseFloat(data.Quantity)
+		if err != nil {
+			logger.Warn("解析订单数量失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		price, err := parseFloat(data.Price)
+		if err != nil {
+			logger.Warn("解析订单价格失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		averagePrice, err := parseFloat(data.AveragePrice)
+		if err != nil {
+			logger.Warn("解析订单均价失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		filledQty, err := parseFloat(data.FilledQty)
+		if err != nil {
+			logger.Warn("解析已成交数量失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		leverage, err := parseInt(data.Leverage)
+		if err != nil {
+			logger.Warn("解析杠杆失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
+		timestamp, err := parseInt(data.Timestamp)
+		if err != nil {
+			logger.Warn("解析时间戳失败", zap.String("orderId", data.OrderID), zap.Error(err))
+		}
 
 		status := types.OrderStatusPending
 		switch data.Status {

@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -349,8 +350,9 @@ func (m *TakeProfitManager) checkTieredTakeProfit(state *PositionState) *TakePro
 		}
 
 		if profitPercent >= level.ProfitPercent {
-			quantity := state.Size * (level.ClosePercent / 100) * (1 - state.ClosedPercent/100)
-			
+			// Close a fixed fraction of the ORIGINAL position size for this tier
+			quantity := state.Size * (level.ClosePercent / 100)
+
 			if quantity <= 0 {
 				continue
 			}
@@ -366,7 +368,8 @@ func (m *TakeProfitManager) checkTieredTakeProfit(state *PositionState) *TakePro
 				TierLevel:    i,
 			}
 
-			state.ClosedPercent += level.ClosePercent * (1 - state.ClosedPercent/100)
+			// Track cumulative closed percentage (sum of original-tier percentages)
+			state.ClosedPercent += level.ClosePercent
 
 			return &TakeProfitSignal{
 				Symbol:        state.Symbol,
@@ -484,5 +487,5 @@ func getExitSide(side types.OrderSide) types.OrderSide {
 }
 
 func generateTieredOrderID(symbol string, level int) string {
-	return symbol + "_tier_" + string(rune('0'+level))
+	return fmt.Sprintf("%s_tier_%d", symbol, level)
 }

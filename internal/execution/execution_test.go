@@ -619,3 +619,11 @@ func (s *stubExchange) GetOrderBook(symbol string, depth int) (*types.OrderBook,
 func (s *stubExchange) SetLeverage(symbol string, leverage int, marginMode string) error {
 	return nil
 }
+func (s *stubExchange) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return &types.AlgoOrderResult{AlgoID: "algo_" + order.Symbol, Symbol: order.Symbol, Status: "active"}, nil
+}
+func (s *stubExchange) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (s *stubExchange) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (s *stubExchange) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }

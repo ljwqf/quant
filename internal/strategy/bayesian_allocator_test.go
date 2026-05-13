@@ -278,12 +278,12 @@ func TestNormalizeAllocatorWeights(t *testing.T) {
 	assert.Equal(t, 0.5, normalized["a"])
 	assert.Equal(t, 0.5, normalized["b"])
 
-	// Test case 3: Single strategy
+	// Test case 3: Single strategy should be capped at MaxWeight, rest stays as cash reserve
 	weights = map[string]float64{
 		"a": 0.5,
 	}
 	normalized = normalizeAllocatorWeights(weights)
-	assert.Equal(t, 1.0, normalized["a"])
+	assert.Equal(t, MaxWeight, normalized["a"])
 
 	// Test case 4: Empty map
 	weights = map[string]float64{}

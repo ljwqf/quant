@@ -50,4 +50,16 @@ type Exchange interface {
 
 	// SetLeverage 调整杠杆
 	SetLeverage(symbol string, leverage int, marginMode string) error
+
+	// PlaceAlgoOrder 下发算法单（条件单/止盈止损）
+	PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error)
+
+	// CancelAlgoOrder 撤销算法单
+	CancelAlgoOrder(algoID, symbol string) error
+
+	// GetAlgoOrders 获取算法单列表
+	GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error)
+
+	// GetFundingRate 获取资金费率
+	GetFundingRate(instId string) (*types.FundingRate, error)
 }

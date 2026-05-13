@@ -9,6 +9,8 @@ services:
     volumes:
       - ./configs:/app/configs
       - ./logs:/app/logs
+      - ./data:/app/data
+      - ./web:/app/web      # 静态文件挂载，更新无需重新构建
     environment:
       - TZ=Asia/Shanghai
       - CONFIG_FILE=/app/configs/config.yaml

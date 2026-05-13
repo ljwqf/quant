@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 type stubExchange struct {
@@ -51,6 +51,14 @@ func (s *stubExchange) GetOrderBook(symbol string, depth int) (*types.OrderBook,
 func (s *stubExchange) SetLeverage(symbol string, leverage int, marginMode string) error {
 	return nil
 }
+func (s *stubExchange) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
+	return nil, nil
+}
+func (s *stubExchange) CancelAlgoOrder(algoID, symbol string) error { return nil }
+func (s *stubExchange) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
+	return nil, nil
+}
+func (s *stubExchange) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
 
 func TestManagerCheckRiskRejectsInvalidSignal(t *testing.T) {
 	manager := NewManager(testRiskConfig(), &stubExchange{})
@@ -124,4 +132,59 @@ func TestManagerGetRiskMetricsIncludesExposureAndTrades(t *testing.T) {
 
 	assert.Equal(t, 1, metrics["daily_trades"])
 	assert.Equal(t, 100.0, metrics["total_exposure"])
+}
+
+func TestManagerCheckOrderUsesConfiguredMaxRiskPerTrade(t *testing.T) {
+	manager := NewManager(&config.RiskConfig{
+		Enable:               true,
+		MaxPositionSize:      10000,
+		MaxDailyLoss:         1000,
+		MaxDrawdown:          0.2,
+		StopLossPercent:      0.05,
+		TakeProfitPercent:    0.1,
+		MaxTradesPerDay:      100,
+		MaxRiskPerTrade:      0.1,
+		MaxExposurePerSymbol: 0.5,
+	}, &stubExchange{account: &types.Account{TotalEquity: 1000}})
+
+	err := manager.CheckOrder(&types.Order{Symbol: "BTC-USDT", Side: types.OrderSideBuy, Type: types.OrderTypeLimit, Quantity: 5, Price: 10})
+
+	assert.NoError(t, err)
+}
+
+func TestManagerCheckOrderUsesDefaultMaxRiskPerTradeFallback(t *testing.T) {
+	manager := NewManager(&config.RiskConfig{
+		Enable:               true,
+		MaxPositionSize:      10000,
+		MaxDailyLoss:         1000,
+		MaxDrawdown:          0.2,
+		StopLossPercent:      0.05,
+		TakeProfitPercent:    0.1,
+		MaxTradesPerDay:      100,
+		MaxRiskPerTrade:      0,
+		MaxExposurePerSymbol: 0,
+	}, &stubExchange{account: &types.Account{TotalEquity: 1000}})
+
+	err := manager.CheckOrder(&types.Order{Symbol: "BTC-USDT", Side: types.OrderSideBuy, Type: types.OrderTypeLimit, Quantity: 5, Price: 10})
+
+	assert.ErrorIs(t, err, ErrSingleTradeRiskExceeded)
+}
+
+func TestManagerCheckOrderUsesConfiguredMaxExposurePerSymbol(t *testing.T) {
+	manager := NewManager(&config.RiskConfig{
+		Enable:               true,
+		MaxPositionSize:      10000,
+		MaxDailyLoss:         1000,
+		MaxDrawdown:          0.2,
+		StopLossPercent:      0.05,
+		TakeProfitPercent:    0.1,
+		MaxTradesPerDay:      100,
+		MaxRiskPerTrade:      0.3,
+		MaxExposurePerSymbol: 0.2,
+	}, &stubExchange{account: &types.Account{TotalEquity: 1000}})
+
+	manager.UpdatePosition(&types.Position{Symbol: "BTC-USDT", Side: types.OrderSideBuy, Size: 10, MarkPrice: 10})
+	err := manager.CheckOrder(&types.Order{Symbol: "BTC-USDT", Side: types.OrderSideBuy, Type: types.OrderTypeLimit, Quantity: 15, Price: 10})
+
+	assert.ErrorIs(t, err, ErrSymbolExposureExceeded)
 }

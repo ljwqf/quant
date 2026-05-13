@@ -199,11 +199,61 @@ func (a *OnlineBayesianAllocator) resetToUniformPrior() {
 	a.dailyLoss = 0
 }
 
+// sampleBeta 使用 Gamma 分布采样 Beta(alpha, beta) 分布
+// Beta(α,β) = Gamma(α,1) / (Gamma(α,1) + Gamma(β,1))
 func (a *OnlineBayesianAllocator) sampleBeta(alpha, beta float64) float64 {
 	a.randMutex.Lock()
 	defer a.randMutex.Unlock()
 
-	return a.rand.Float64()
+	if alpha <= 0 || beta <= 0 {
+		return 0
+	}
+
+	ga := sampleGamma(a.rand, alpha)
+	gb := sampleGamma(a.rand, beta)
+	denom := ga + gb
+	if denom == 0 {
+		return 0
+	}
+	return ga / denom
+}
+
+// sampleGamma 使用 Marsaglia & Tsang 简单算法采样 Gamma(shape, 1) 分布
+func sampleGamma(r *rand.Rand, shape float64) float64 {
+	if shape <= 0 {
+		return 0
+	}
+	if shape < 1 {
+		// Gamma(shape, 1) = Gamma(shape+1, 1) * U^(1/shape)
+		return sampleGamma(r, shape+1) * math.Pow(r.Float64(), 1.0/shape)
+	}
+
+	d := shape - 1.0/3.0
+	c := 1.0 / math.Sqrt(9.0*d)
+
+	for {
+		var x, v float64
+		for {
+			x = r.NormFloat64()
+			v = 1.0 + c*x
+			if v > 0 {
+				break
+			}
+		}
+
+		v = v * v * v
+		u := r.Float64()
+
+		// 0 < u < 1 − 0.0331 * (x^2)^2
+		if u < 1.0-0.0331*(x*x)*(x*x) {
+			return d * v
+		}
+
+		// u < exp(-0.5 * x^2) 等价于 log(u) < -0.5 * x^2
+		if math.Log(u) < 0.5*x*x+d*(1.0-v+math.Log(v)) {
+			return d * v
+		}
+	}
 }
 
 func (a *OnlineBayesianAllocator) CalculateWeights() map[string]float64 {
@@ -281,6 +331,10 @@ func (a *OnlineBayesianAllocator) SetTotalCapital(capital float64) {
 	defer a.strategiesMutex.Unlock()
 
 	a.totalCapital = capital
+	logger.Debug("SetTotalCapital",
+		zap.Float64("capital", capital),
+		zap.Int("strategyCount", len(a.strategies)),
+	)
 	a.updateTargetWeightsLocked()
 }
 
@@ -290,13 +344,25 @@ func (a *OnlineBayesianAllocator) GetAllocation(strategy string) *WeightAllocati
 
 	perf, exists := a.strategies[strategy]
 	if !exists {
+		logger.Warn("GetAllocation: strategy not found",
+			zap.String("strategy", strategy),
+			zap.Float64("totalCapital", a.totalCapital),
+		)
 		return nil
 	}
+
+	amount := a.totalCapital * perf.CurrentWeight
+	logger.Debug("GetAllocation",
+		zap.String("strategy", strategy),
+		zap.Float64("totalCapital", a.totalCapital),
+		zap.Float64("currentWeight", perf.CurrentWeight),
+		zap.Float64("amount", amount),
+	)
 
 	return &WeightAllocation{
 		Strategy: strategy,
 		Weight:   perf.CurrentWeight,
-		Amount:   a.totalCapital * perf.CurrentWeight,
+		Amount:   amount,
 	}
 }
 
@@ -489,9 +555,13 @@ func normalizeAllocatorWeights(weights map[string]float64) map[string]float64 {
 	}
 
 	if positiveCount == 1 {
+		// 单策略场景：尊重 maxWeight 限制，剩余部分保留为现金储备
 		for name, weight := range normalized {
 			if weight > 0 {
-				normalized[name] = 1
+				if weight > MaxWeight {
+					normalized[name] = MaxWeight
+				}
+				// 其余资金保留为现金，不再分配
 			}
 		}
 	}

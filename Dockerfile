@@ -1,41 +1,56 @@
-# 使用官方的Go镜像作为构建环境
-FROM golang:1.21-alpine AS builder
+# Stage 1: Build
+FROM golang:1.25-alpine AS builder
 
-# 设置工作目录
+# GOPROXY for China
+ENV GOPROXY=https://goproxy.cn,direct
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
 WORKDIR /app
 
-# 复制go.mod和go.sum文件
+# Copy go.mod first to leverage layer caching
 COPY go.mod go.sum ./
-
-# 下载依赖
 RUN go mod download
 
-# 复制源代码
+# Copy source and build
 COPY . .
 
-# 构建应用
-RUN go build -o okx-quant ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X main.version=$(git describe --tags --always 2>/dev/null || echo dev)" \
+    -o /app/okx-quant ./cmd/trader
 
-# 使用轻量级的Alpine镜像作为运行环境
-FROM alpine:3.18
+# Stage 2: Runtime
+FROM alpine:3.19
 
-# 设置工作目录
+# Install runtime deps and create non-root user
+RUN apk --no-cache add ca-certificates tzdata wget && \
+    adduser -D -g '' appuser
+
 WORKDIR /app
 
-# 复制构建好的应用
-COPY --from=builder /app/okx-quant .
+# Copy binary from builder
+COPY --from=builder /app/okx-quant /app/
 
-# 复制配置文件
-COPY configs/ /app/configs/
+# Copy config templates and web assets
+COPY --from=builder /app/configs /app/configs
+COPY --from=builder /app/web /app/web
 
-# 安装必要的依赖
-RUN apk add --no-cache ca-certificates tzdata
+# Create runtime directories
+RUN mkdir -p /app/logs /app/data/runtime && \
+    chown -R appuser:appuser /app
 
-# 设置时区
-ENV TZ=Asia/Shanghai
+# Switch to non-root user
+USER appuser
 
-# 暴露端口（如果需要）
-EXPOSE 8080
+# Environment
+ENV TZ=Asia/Shanghai \
+    QUANT_ENV=simulation
 
-# 运行应用
-CMD ["./okx-quant"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q --spider http://localhost:8765/health || exit 1
+
+EXPOSE 8765
+
+ENTRYPOINT ["/app/okx-quant"]

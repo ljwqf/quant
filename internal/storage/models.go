@@ -92,3 +92,42 @@ type AlertRecord struct {
 	Read      bool      `db:"read"`
 	CreatedAt time.Time `db:"created_at"`
 }
+
+// KlineData K线数据
+type KlineData struct {
+	ID        int64     `db:"id"`
+	Symbol    string    `db:"symbol"`
+	Interval  string    `db:"interval"`
+	Open      float64   `db:"open"`
+	High      float64   `db:"high"`
+	Low       float64   `db:"low"`
+	Close     float64   `db:"close"`
+	Volume    float64   `db:"volume"`
+	Timestamp time.Time `db:"timestamp"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// TickData 行情数据
+type TickData struct {
+	ID        int64     `db:"id"`
+	Symbol    string    `db:"symbol"`
+	Price     float64   `db:"price"`
+	Open24h   float64   `db:"open_24h"`
+	High24h   float64   `db:"high_24h"`
+	Low24h    float64   `db:"low_24h"`
+	Volume24h float64   `db:"volume_24h"`
+	Timestamp time.Time `db:"timestamp"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// ActivePosition 策略活跃持仓记录
+type ActivePosition struct {
+	ID         int64     `db:"id"`
+	Strategy   string    `db:"strategy"`
+	Symbol     string    `db:"symbol"`
+	Side       string    `db:"side"`
+	Size       float64   `db:"size"`
+	EntryPrice float64   `db:"entry_price"`
+	OrderID    string    `db:"order_id"`
+	CreatedAt  time.Time `db:"created_at"`
+}

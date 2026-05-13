@@ -2,9 +2,13 @@ package okx
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,26 +17,31 @@ import (
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/logger"
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 )
 
 const (
 	wsStateDisconnected int32 = 0
 	wsStateConnected    int32 = 1
 	wsStateReconnecting int32 = 2
+	maxReconnectAttempt       = 5
 )
 
 type wsClient struct {
-	config          *config.OKXConfig
-	conn            *websocket.Conn
-	state           int32
-	mutex           sync.Mutex
-	connMutex       sync.Mutex
-	heartbeatTicker *time.Ticker
-	messageHandler  func([]byte)
-	subscriptions   map[string]bool
-	reconnectChan   chan struct{}
-	ctx             context.Context
-	cancel          context.CancelFunc
+	config           *config.OKXConfig
+	conn             *websocket.Conn
+	state            int32
+	mutex            sync.Mutex
+	connMutex        sync.Mutex
+	heartbeatTicker  *time.Ticker
+	messageHandler   func([]byte)
+	subscriptions    map[string]bool
+	reconnectChan    chan struct{}
+	ctx              context.Context
+	cancel           context.CancelFunc
+	connCtx          context.Context    // per-connection context, replaced on each connect/reconnect
+	connCancel       context.CancelFunc // cancels connCtx to kill old readLoop/heartbeatLoop
+	connMu           sync.Mutex         // protects connCtx/connCancel access
 }
 
 type wsMessage struct {
@@ -49,14 +58,45 @@ type wsArg struct {
 
 func newWSClient(cfg *config.OKXConfig, messageHandler func([]byte)) (*wsClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &wsClient{
+	client := &wsClient{
 		config:         cfg,
 		messageHandler: messageHandler,
 		subscriptions:  make(map[string]bool),
 		reconnectChan:  make(chan struct{}, 1),
 		ctx:            ctx,
 		cancel:         cancel,
-	}, nil
+	}
+
+	go client.reconnectWorker()
+	return client, nil
+}
+
+// buildDialer 构建 WebSocket 拨号器（支持 SOCKS5 和 HTTP 代理）
+func (w *wsClient) buildDialer() *websocket.Dialer {
+	dialer := *websocket.DefaultDialer
+
+	if w.config.ProxyURL != "" {
+		proxyParsed, err := url.Parse(w.config.ProxyURL)
+		if err == nil {
+			switch proxyParsed.Scheme {
+			case "socks5":
+				socksDialer, err := proxy.SOCKS5("tcp", proxyParsed.Host, nil, proxy.Direct)
+				if err == nil {
+					dialer.NetDial = func(network, addr string) (net.Conn, error) {
+						return socksDialer.Dial(network, addr)
+					}
+				}
+			case "http", "https":
+				dialer.Proxy = http.ProxyURL(proxyParsed)
+			}
+		}
+		if w.config.ProxySkipVerify {
+			logger.Warn("⚠️  TLS证书验证已禁用！仅在可信网络环境中使用！", zap.String("proxy", w.config.ProxyURL))
+			dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+	}
+
+	return &dialer
 }
 
 func (w *wsClient) connect() error {
@@ -67,25 +107,39 @@ func (w *wsClient) connect() error {
 		return nil
 	}
 
+	// SOCKS5 proxy may need a moment to initialize; delay first connect attempt.
+	if w.config.ProxyURL != "" {
+		time.Sleep(2 * time.Second)
+	}
+
 	wsURL, err := url.Parse(w.config.WSURL)
 	if err != nil {
 		return fmt.Errorf("解析 WebSocket URL 失败: %w", err)
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+	conn, _, err := w.buildDialer().Dial(wsURL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("WebSocket 连接失败: %w", err)
 	}
+
+	// Cancel any stale connection context before establishing new one
+	w.cancelConnection()
 
 	w.connMutex.Lock()
 	w.conn = conn
 	w.connMutex.Unlock()
 
+	// Create a fresh per-connection context — old goroutines will exit when this is cancelled
+	connCtx, connCancel := context.WithCancel(w.ctx)
+	w.connMu.Lock()
+	w.connCtx = connCtx
+	w.connCancel = connCancel
+	w.connMu.Unlock()
+
 	atomic.StoreInt32(&w.state, wsStateConnected)
 
-	go w.heartbeatLoop()
-	go w.readLoop()
-	go w.reconnectWorker()
+	go w.heartbeatLoop(connCtx)
+	go w.readLoop(connCtx)
 
 	logger.Info("WebSocket 连接成功")
 	return nil
@@ -99,9 +153,8 @@ func (w *wsClient) disconnect() error {
 		return nil
 	}
 
-	if w.cancel != nil {
-		w.cancel()
-	}
+	// Cancel the per-connection context to kill active readLoop/heartbeatLoop
+	w.cancelConnection()
 
 	if w.heartbeatTicker != nil {
 		w.heartbeatTicker.Stop()
@@ -122,17 +175,30 @@ func (w *wsClient) disconnect() error {
 	return nil
 }
 
-func (w *wsClient) heartbeatLoop() {
-	w.mutex.Lock()
-	w.heartbeatTicker = time.NewTicker(30 * time.Second)
-	ticker := w.heartbeatTicker
-	w.mutex.Unlock()
+// cancelConnection cancels the current per-connection context and cleans up references.
+// Must be called with w.mutex or w.connMu held.
+func (w *wsClient) cancelConnection() {
+	w.connMu.Lock()
+	defer w.connMu.Unlock()
 
+	if w.connCancel != nil {
+		w.connCancel()
+		w.connCancel = nil
+	}
+	w.connCtx = nil
+}
+
+func (w *wsClient) heartbeatLoop(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+
+	w.mutex.Lock()
+	w.heartbeatTicker = ticker
+	w.mutex.Unlock()
 
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if err := w.sendHeartbeat(); err != nil {
@@ -144,10 +210,10 @@ func (w *wsClient) heartbeatLoop() {
 	}
 }
 
-func (w *wsClient) readLoop() {
+func (w *wsClient) readLoop(ctx context.Context) {
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 			w.connMutex.Lock()
@@ -159,12 +225,18 @@ func (w *wsClient) readLoop() {
 				return
 			}
 
+			// 设置读取超时防止阻塞过久
+			_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				logger.Error("读取 WebSocket 消息失败", zap.Error(err))
 				w.triggerReconnect()
 				return
 			}
+
+			// 重置读取超时
+			_ = conn.SetReadDeadline(time.Time{})
 
 			w.messageHandler(message)
 		}
@@ -190,17 +262,20 @@ func (w *wsClient) reconnectWorker() {
 }
 
 func (w *wsClient) doReconnect() {
-	if !atomic.CompareAndSwapInt32(&w.state, wsStateConnected, wsStateReconnecting) {
+	for {
 		currentState := atomic.LoadInt32(&w.state)
 		if currentState == wsStateReconnecting {
 			return
 		}
-		if currentState == wsStateDisconnected {
-			return
+		if atomic.CompareAndSwapInt32(&w.state, currentState, wsStateReconnecting) {
+			break
 		}
 	}
 
 	logger.Info("正在重连 WebSocket...")
+
+	// Cancel old connection goroutines before reconnecting
+	w.cancelConnection()
 
 	w.connMutex.Lock()
 	if w.conn != nil {
@@ -209,7 +284,7 @@ func (w *wsClient) doReconnect() {
 	}
 	w.connMutex.Unlock()
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < maxReconnectAttempt; i++ {
 		select {
 		case <-w.ctx.Done():
 			return
@@ -223,7 +298,7 @@ func (w *wsClient) doReconnect() {
 			continue
 		}
 
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+		conn, _, err := w.buildDialer().Dial(wsURL.String(), nil)
 		if err != nil {
 			logger.Error("重连失败", zap.Error(err), zap.Int("attempt", i+1))
 			time.Sleep(time.Duration(i+1) * time.Second)
@@ -234,10 +309,17 @@ func (w *wsClient) doReconnect() {
 		w.conn = conn
 		w.connMutex.Unlock()
 
+		// Create a fresh per-connection context so old goroutines are properly terminated
+		connCtx, connCancel := context.WithCancel(w.ctx)
+		w.connMu.Lock()
+		w.connCtx = connCtx
+		w.connCancel = connCancel
+		w.connMu.Unlock()
+
 		atomic.StoreInt32(&w.state, wsStateConnected)
 
-		go w.heartbeatLoop()
-		go w.readLoop()
+		go w.heartbeatLoop(connCtx)
+		go w.readLoop(connCtx)
 
 		w.resubscribe()
 		logger.Info("WebSocket 重连成功")
@@ -325,8 +407,11 @@ func (w *wsClient) resubscribe() {
 	w.mutex.Unlock()
 
 	for key := range subs {
-		var channel, symbol, interval string
-		fmt.Sscanf(key, "%s:%s:%s", &channel, &symbol, &interval)
+		channel, symbol, interval, ok := parseSubscriptionKey(key)
+		if !ok {
+			logger.Warn("忽略无效订阅键", zap.String("key", key))
+			continue
+		}
 		if err := w.subscribe(channel, symbol, interval); err != nil {
 			logger.Error("重新订阅失败",
 				zap.Error(err),
@@ -336,6 +421,17 @@ func (w *wsClient) resubscribe() {
 			)
 		}
 	}
+}
+
+func parseSubscriptionKey(key string) (channel, symbol, interval string, ok bool) {
+	parts := strings.SplitN(key, ":", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
 
 func (w *wsClient) isConnected() bool {

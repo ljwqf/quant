@@ -479,6 +479,7 @@ func (s *VolatilityBreakoutStrategy) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		s.params[k] = v
 	}
+	s.updateIndicators()
 }
 
 func (s *VolatilityBreakoutStrategy) GetMetrics() map[string]interface{} {

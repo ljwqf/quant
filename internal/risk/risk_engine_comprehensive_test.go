@@ -3,10 +3,11 @@ package risk
 import (
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewEngine(t *testing.T) {
@@ -32,8 +33,6 @@ func TestCheckRiskAllowsValidSignal(t *testing.T) {
 	err := engine.CheckRisk(signal)
 	assert.NoError(t, err)
 }
-
-
 
 func TestCheckRiskRejectsWhenDailyLossExceeded(t *testing.T) {
 	cfg := testRiskConfig()
@@ -89,9 +88,9 @@ func TestUpdatePosition(t *testing.T) {
 	engine := NewEngine(testRiskConfig())
 
 	position := &types.Position{
-		Symbol:    "BTC-USDT",
-		Side:      types.OrderSideBuy,
-		Size:      1.0,
+		Symbol:     "BTC-USDT",
+		Side:       types.OrderSideBuy,
+		Size:       1.0,
 		EntryPrice: 50000,
 	}
 
@@ -103,16 +102,16 @@ func TestUpdatePositionReplacesExisting(t *testing.T) {
 	engine := NewEngine(testRiskConfig())
 
 	engine.UpdatePosition(&types.Position{
-		Symbol:    "BTC-USDT",
-		Side:      types.OrderSideBuy,
-		Size:      1.0,
+		Symbol:     "BTC-USDT",
+		Side:       types.OrderSideBuy,
+		Size:       1.0,
 		EntryPrice: 50000,
 	})
 
 	engine.UpdatePosition(&types.Position{
-		Symbol:    "BTC-USDT",
-		Side:      types.OrderSideSell,
-		Size:      2.0,
+		Symbol:     "BTC-USDT",
+		Side:       types.OrderSideSell,
+		Size:       2.0,
 		EntryPrice: 55000,
 	})
 
@@ -227,10 +226,40 @@ func TestResetDailyStats(t *testing.T) {
 
 func TestCheckTimeFuseAllowsNormalTime(t *testing.T) {
 	engine := NewEngine(testRiskConfig())
+	engine.nowFunc = func() time.Time {
+		return time.Date(2026, 3, 26, 10, 30, 0, 0, time.Local)
+	}
 
 	err := engine.checkTimeFuseLocked()
 
 	assert.NoError(t, err)
+}
+
+func TestCheckTimeFuseBlocksSettlementWindow(t *testing.T) {
+	engine := NewEngine(testRiskConfig())
+	engine.nowFunc = func() time.Time {
+		return time.Date(2026, 3, 26, 8, 0, 0, 0, time.Local)
+	}
+
+	err := engine.checkTimeFuseLocked()
+	assert.ErrorIs(t, err, ErrMarketClosed)
+}
+
+func TestCheckRiskReturnsMarketClosedDuringFuseWindow(t *testing.T) {
+	engine := NewEngine(testRiskConfig())
+	engine.nowFunc = func() time.Time {
+		return time.Date(2026, 3, 26, 16, 0, 0, 0, time.Local)
+	}
+
+	err := engine.CheckRisk(&types.Signal{
+		Type:     types.SignalTypeBuy,
+		Strategy: "NeedleStrategy",
+		Symbol:   "BTC-USDT",
+		Price:    100,
+		Quantity: 0.01,
+	})
+
+	assert.ErrorIs(t, err, ErrMarketClosed)
 }
 
 func TestIsTimeInWindow(t *testing.T) {
@@ -291,10 +320,10 @@ func TestEngineWithNilConfig(t *testing.T) {
 
 func TestEngineWithDisabledRisk(t *testing.T) {
 	cfg := &config.RiskConfig{
-		Enable:            false,
-		MaxDailyLoss:      100,
-		MaxTradesPerDay:   10,
-		MaxPositionSize:   100,
+		Enable:          false,
+		MaxDailyLoss:    100,
+		MaxTradesPerDay: 10,
+		MaxPositionSize: 100,
 	}
 	engine := NewEngine(cfg)
 
@@ -350,5 +379,3 @@ func TestCheckDrawdown(t *testing.T) {
 
 	assert.False(t, engine.IsCircuitBreakerTriggered())
 }
-
-

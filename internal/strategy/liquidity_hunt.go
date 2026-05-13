@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/ljwqf/quant/pkg/types"
@@ -9,6 +10,7 @@ import (
 
 // LiquidityHuntEngine BTC/ETH机构博弈引擎
 type LiquidityHuntEngine struct {
+	mu               sync.Mutex
 	name             string
 	params           map[string]interface{}
 	keyLevels        map[string][]float64 // 关键位，按币种存储
@@ -76,6 +78,9 @@ func (e *LiquidityHuntEngine) OnTick(tick *types.Tick) (*types.Signal, error) {
 		return nil, nil
 	}
 
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	// 更新价格历史
 	e.updatePriceHistory(tick)
 
@@ -88,6 +93,9 @@ func (e *LiquidityHuntEngine) OnTick(tick *types.Tick) (*types.Signal, error) {
 
 // OnBar 处理K线数据
 func (e *LiquidityHuntEngine) OnBar(bar *types.Bar) (*types.Signal, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	// 更新价格和成交量历史
 	e.priceHistory[bar.Symbol] = append(e.priceHistory[bar.Symbol], bar.Close)
 	e.volumeHistory[bar.Symbol] = append(e.volumeHistory[bar.Symbol], bar.Volume)
@@ -122,6 +130,8 @@ func (e *LiquidityHuntEngine) GetParams() map[string]interface{} {
 
 // SetParams 设置策略参数
 func (e *LiquidityHuntEngine) SetParams(params map[string]interface{}) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	for k, v := range params {
 		e.params[k] = v
 	}

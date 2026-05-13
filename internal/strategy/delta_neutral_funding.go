@@ -87,6 +87,7 @@ type DeltaNeutralFundingPro struct {
 	fundingIncome          float64
 	tradeCount             int
 	metricsMutex           sync.Mutex
+	nowFunc                func() time.Time
 	stopChan               chan struct{}
 	rebalanceChan          chan struct{}
 	killSwitchChan         chan struct{}
@@ -94,7 +95,7 @@ type DeltaNeutralFundingPro struct {
 }
 
 func NewDeltaNeutralFundingPro() *DeltaNeutralFundingPro {
-	return &DeltaNeutralFundingPro{
+	strategy := &DeltaNeutralFundingPro{
 		name:                   "DeltaNeutralFunding-Pro",
 		params:                 make(map[string]interface{}),
 		metrics:                make(map[string]interface{}),
@@ -110,10 +111,13 @@ func NewDeltaNeutralFundingPro() *DeltaNeutralFundingPro {
 		settlementWindowAfter:  SettlementWindowAfter,
 		spotSymbol:             "BTC-USDT",
 		perpSymbol:             "BTC-USDT-SWAP",
+		nowFunc:                time.Now,
 		stopChan:               make(chan struct{}),
 		rebalanceChan:          make(chan struct{}, 1),
 		killSwitchChan:         make(chan struct{}, 1),
 	}
+	strategy.dailyLossReset = strategy.nowFunc()
+	return strategy
 }
 
 func (e *DeltaNeutralFundingPro) Name() string {
@@ -214,6 +218,39 @@ func (e *DeltaNeutralFundingPro) GetParams() map[string]interface{} {
 func (e *DeltaNeutralFundingPro) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		e.params[k] = v
+	}
+	if symbol, ok := params["spot_symbol"].(string); ok {
+		e.spotSymbol = symbol
+	}
+	if symbol, ok := params["perp_symbol"].(string); ok {
+		e.perpSymbol = symbol
+	}
+	if value, ok := params["fund_usage_percent"].(float64); ok && value > 0 {
+		e.fundUsagePercent = value
+	}
+	if value, ok := params["rebalance_threshold"].(float64); ok && value >= 0 {
+		e.rebalanceThreshold = value
+	}
+	if value, ok := params["basis_circuit_breaker"].(float64); ok && value >= 0 {
+		e.basisCircuitBreaker = value
+	}
+	if target, ok := params["target_hedge_ratio"].(float64); ok && target > 0 {
+		e.targetHedgeRatio = target
+	}
+	if tolerance, ok := params["hedge_ratio_tolerance"].(float64); ok && tolerance >= 0 {
+		e.hedgeRatioTolerance = tolerance
+	}
+	if value, ok := params["daily_loss_limit"].(float64); ok && value >= 0 {
+		e.dailyLossLimit = value
+	}
+	if value, ok := params["margin_buffer_percent"].(float64); ok && value >= 0 {
+		e.marginBufferPercent = value
+	}
+	if value, ok := params["settlement_window_before"].(time.Duration); ok && value >= 0 {
+		e.settlementWindowBefore = value
+	}
+	if value, ok := params["settlement_window_after"].(time.Duration); ok && value >= 0 {
+		e.settlementWindowAfter = value
 	}
 }
 
@@ -383,7 +420,7 @@ func (e *DeltaNeutralFundingPro) isInSettlementWindow() bool {
 		return false
 	}
 
-	now := time.Now()
+	now := e.nowFunc()
 	settlementTime := e.fundingData.NextSettlement
 
 	if now.After(settlementTime.Add(-e.settlementWindowBefore)) &&
@@ -395,14 +432,10 @@ func (e *DeltaNeutralFundingPro) isInSettlementWindow() bool {
 }
 
 func (e *DeltaNeutralFundingPro) checkCircuitBreaker() bool {
+	e.resetDailyLossIfNeeded(e.nowFunc())
+
 	if e.dailyLoss >= e.dailyLossLimit {
-		now := time.Now()
-		if !isSameDay(now, e.dailyLossReset) {
-			e.dailyLoss = 0
-			e.dailyLossReset = now
-		} else {
-			return true
-		}
+		return true
 	}
 
 	basis := e.calculateBasis()
@@ -588,10 +621,18 @@ func (e *DeltaNeutralFundingPro) RecordFundingIncome(income float64) {
 func (e *DeltaNeutralFundingPro) RecordPnL(pnl float64) {
 	e.metricsMutex.Lock()
 	defer e.metricsMutex.Unlock()
+	e.resetDailyLossIfNeeded(e.nowFunc())
 
 	e.totalPnL += pnl
 	if pnl < 0 {
 		e.dailyLoss += -pnl
+	}
+}
+
+func (e *DeltaNeutralFundingPro) resetDailyLossIfNeeded(now time.Time) {
+	if e.dailyLossReset.IsZero() || !isSameDay(now, e.dailyLossReset) {
+		e.dailyLoss = 0
+		e.dailyLossReset = now
 	}
 }
 

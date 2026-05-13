@@ -1,4 +1,6 @@
 # Binaries for programs and plugins
+/trader
+/trader-*
 *.exe
 *.exe~
 *.dll
@@ -64,3 +66,14 @@ coverage.html
 # Configuration files
 configs/*
 !configs/config.yaml.example
+!configs/config.sim.yaml
+!configs/config.prod.yaml
+
+# Runtime data
+data/runtime/
+
+# Private deployment info (IPs, SSH keys, internal configs)
+deployments/private/
+
+# Claude Code local settings
+.claude/settings.local.json

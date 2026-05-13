@@ -12,10 +12,10 @@ import (
 
 // OpenAIProvider OpenAI 提供商
 type OpenAIProvider struct {
-	apiKey   string
-	baseURL  string
-	client   *http.Client
-	timeout  time.Duration
+	apiKey  string
+	baseURL string
+	client  *http.Client
+	timeout time.Duration
 }
 
 // NewOpenAIProvider 创建 OpenAI 提供商
@@ -98,11 +98,16 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatRespo
 	if err != nil {
 		return nil, fmt.Errorf("发送请求失败: %w", err)
 	}
-	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return nil, fmt.Errorf("读取响应失败: %w (close body: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		return nil, fmt.Errorf("关闭响应体失败: %w", closeErr)
 	}
 
 	if resp.StatusCode != http.StatusOK {

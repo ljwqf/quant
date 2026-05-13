@@ -29,13 +29,14 @@ type smartFilterSnapshot struct {
 }
 
 type smartFilterRefreshConfig struct {
-	Enabled     bool
-	Source      string
-	Interval    time.Duration
-	FilePath    string
-	HTTPURL     string
-	HTTPTimeout time.Duration
-	CryptoQuantAsset string
+	Enabled              bool
+	Source               string
+	Interval             time.Duration
+	FilePath             string
+	HTTPURL              string
+	HTTPTimeout          time.Duration
+	CryptoQuantAsset     string
+	CryptoQuantAPIKey    string
 }
 
 type OnChainDataUpdater interface {
@@ -145,7 +146,7 @@ func smartFilterCandidateSources(cfg smartFilterRefreshConfig) ([]string, error)
 
 	if source == "auto" {
 		// 检查是否设置了CryptoQuant API Key
-		if os.Getenv("CRYPTOQUANT_API_KEY") != "" {
+		if strings.TrimSpace(cfg.CryptoQuantAPIKey) != "" {
 			return []string{"cryptoquant", "http", "file", "env"}, nil
 		}
 		if strings.TrimSpace(cfg.HTTPURL) != "" {
@@ -174,49 +175,80 @@ func smartFilterCandidateSources(cfg smartFilterRefreshConfig) ([]string, error)
 func loadSmartFilterSnapshotBySource(cfg smartFilterRefreshConfig, source string) (smartFilterSnapshot, error) {
 	switch source {
 	case "cryptoquant":
-		return loadSmartFilterSnapshotFromCryptoQuant(cfg.CryptoQuantAsset)
+		return loadSmartFilterSnapshotFromCryptoQuant(cfg.CryptoQuantAPIKey, cfg.CryptoQuantAsset)
 	case "http":
 		return loadSmartFilterSnapshotFromHTTP(cfg.HTTPURL, cfg.HTTPTimeout)
 	case "file":
 		return loadSmartFilterSnapshotFromFile(cfg.FilePath)
 	case "env":
-		return loadSmartFilterSnapshotFromEnv(), nil
+		snapshot := loadSmartFilterSnapshotFromEnv()
+		if snapshot.Netflow == 0 && snapshot.SOPR == 0 && snapshot.MVRV == 0 {
+			return smartFilterSnapshot{}, fmt.Errorf("no SMART_FILTER_NETFLOW/SOPR/MVRV env vars set")
+		}
+		return snapshot, nil
 	default:
 		return smartFilterSnapshot{}, fmt.Errorf("unsupported smart filter source: %s", source)
 	}
 }
 
 func loadSmartFilterSnapshotFromEnv() smartFilterSnapshot {
+	// 仅当环境变量显式设置了SMART_FILTER_NETFLOW/SOPR/MVRV时才使用
+	// 避免使用硬编码默认值导致策略基于假数据做决策
+	netflow, hasNetflow := os.LookupEnv("SMART_FILTER_NETFLOW")
+	sopr, hasSOPR := os.LookupEnv("SMART_FILTER_SOPR")
+	mvrv, hasMVRV := os.LookupEnv("SMART_FILTER_MVRV")
+
+	if !hasNetflow && !hasSOPR && !hasMVRV {
+		// 没有任何环境变量，返回空快照让调用者返回错误
+		return smartFilterSnapshot{}
+	}
+
+	nf, sf, mf := -6000.0, 0.94, 0.95 // 各变量的兜底值
+	if hasNetflow {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(netflow), 64); err == nil {
+			nf = v
+		}
+	}
+	if hasSOPR {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(sopr), 64); err == nil {
+			sf = v
+		}
+	}
+	if hasMVRV {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(mvrv), 64); err == nil {
+			mf = v
+		}
+	}
+
 	return smartFilterSnapshot{
-		Netflow: envFloat64OrDefault("SMART_FILTER_NETFLOW", -6000),
-		SOPR:    envFloat64OrDefault("SMART_FILTER_SOPR", 0.94),
-		MVRV:    envFloat64OrDefault("SMART_FILTER_MVRV", 0.95),
+		Netflow: nf,
+		SOPR:    sf,
+		MVRV:    mf,
 	}
 }
 
-func loadSmartFilterSnapshotFromCryptoQuant(asset string) (smartFilterSnapshot, error) {
+func loadSmartFilterSnapshotFromCryptoQuant(apiKey, asset string) (smartFilterSnapshot, error) {
 	// 创建CryptoQuant客户端
-	client := cryptoquant.NewClientFromEnv()
-	
+	client := cryptoquant.NewClient(apiKey)
+
 	// 获取链上数据
 	netflow, sopr, mvrv, err := client.GetOnChainData(asset)
 	if err != nil {
-		logger.Warn("从CryptoQuant获取数据失败", zap.Error(err))
-		// 返回默认值
-		return smartFilterSnapshot{
-			Netflow: -6000.0,
-			SOPR:    0.94,
-			MVRV:    0.95,
-		}, nil
+		// 不返回硬编码默认值，返回错误让调用者知道数据不可用
+		logger.Warn("从CryptoQuant获取链上数据失败",
+			zap.String("asset", asset),
+			zap.Error(err),
+		)
+		return smartFilterSnapshot{}, fmt.Errorf("CryptoQuant API error: %w", err)
 	}
-	
+
 	logger.Info("从CryptoQuant获取数据成功",
 		zap.String("asset", asset),
 		zap.Float64("netflow", netflow),
 		zap.Float64("sopr", sopr),
 		zap.Float64("mvrv", mvrv),
 	)
-	
+
 	return smartFilterSnapshot{
 		Netflow: netflow,
 		SOPR:    sopr,

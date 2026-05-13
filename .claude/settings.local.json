@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(go build:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(go list:*)",
+      "Bash(go mod:*)",
+      "Bash(go tool:*)",
+      "Bash(ssh *)",
+      "Bash(python3 *)",
+      "Bash(scp *)"
     ]
   }
 }

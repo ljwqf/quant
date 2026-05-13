@@ -2,12 +2,21 @@ package okx
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
 	"go.uber.org/zap"
 )
+
+// normalizeBarInterval 将 K线周期转换为 OKX WebSocket 频道格式（分钟用大写 M）
+func normalizeBarInterval(interval string) string {
+	if before, found := strings.CutSuffix(interval, "m"); found {
+		return before + "M"
+	}
+	return interval
+}
 
 // SubscribeTicker 订阅行情
 func (c *Client) SubscribeTicker(symbol string, handler func(*types.Tick)) error {
@@ -21,7 +30,7 @@ func (c *Client) SubscribeTicker(symbol string, handler func(*types.Tick)) error
 	c.tickerHandlers[symbol] = append(c.tickerHandlers[symbol], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("ticker", symbol, "")
+	return c.wsClient.subscribe("tickers", symbol, "")
 }
 
 // SubscribeBar 订阅K线
@@ -39,7 +48,7 @@ func (c *Client) SubscribeBar(symbol string, interval string, handler func(*type
 	c.barHandlers[symbol][interval] = append(c.barHandlers[symbol][interval], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("candle", symbol, interval)
+	return c.wsClient.subscribe("candle"+normalizeBarInterval(interval), symbol, "")
 }
 
 // SubscribeOrderBook 订阅订单簿
@@ -54,7 +63,7 @@ func (c *Client) SubscribeOrderBook(symbol string, handler func(*types.OrderBook
 	c.orderBookHandlers[symbol] = append(c.orderBookHandlers[symbol], handler)
 	c.mutex.Unlock()
 
-	return c.wsClient.subscribe("books", symbol, "")
+	return c.wsClient.subscribe("books5", symbol, "")
 }
 
 // handleWSMessage 处理 WebSocket 消息
@@ -80,13 +89,75 @@ func (c *Client) handleWSMessage(msg []byte) {
 	case "unsubscribe":
 		// 取消订阅确认，无需处理
 	default:
+		var arg wsArg
+		if len(message.Arg) > 0 {
+			if err := json.Unmarshal(message.Arg, &arg); err != nil {
+				logger.Warn("解析 WebSocket arg 失败", zap.Error(err))
+			}
+		}
 		// 市场数据消息
-		c.handleMarketData(message.Data)
+		c.handleMarketData(arg.Channel, message.Data)
 	}
 }
 
 // handleMarketData 处理市场数据
-func (c *Client) handleMarketData(data json.RawMessage) {
+func (c *Client) handleMarketData(channel string, data json.RawMessage) {
+	if strings.HasPrefix(channel, "ticker") {
+		var tickerData []struct {
+			InstId  string `json:"instId"`
+			Last    string `json:"last"`
+			Open24h string `json:"open24h"`
+			High24h string `json:"high24h"`
+			Low24h  string `json:"low24h"`
+			Vol24h  string `json:"vol24h"`
+			Ts      string `json:"ts"`
+		}
+		if err := json.Unmarshal(data, &tickerData); err == nil && len(tickerData) > 0 {
+			for i := range tickerData {
+				item := tickerData[i]
+				if item.InstId == "" {
+					continue
+				}
+				c.handleTickerData(&item)
+			}
+			return
+		}
+	}
+
+	if strings.HasPrefix(channel, "candle") {
+		var candleData []struct {
+			InstId string   `json:"instId"`
+			Candle []string `json:"candle"`
+			Bar    string   `json:"bar"`
+		}
+
+		if err := json.Unmarshal(data, &candleData); err == nil && len(candleData) > 0 {
+			c.handleCandleData(candleData)
+			return
+		}
+	}
+
+	if strings.HasPrefix(channel, "books") {
+		var bookData []struct {
+			InstId   string     `json:"instId"`
+			Asks     [][]string `json:"asks"`
+			Bids     [][]string `json:"bids"`
+			Ts       string     `json:"ts"`
+			Checksum string     `json:"checksum"`
+		}
+		if err := json.Unmarshal(data, &bookData); err == nil && len(bookData) > 0 {
+			for i := range bookData {
+				item := bookData[i]
+				if item.InstId == "" {
+					continue
+				}
+				c.handleBookData(&item)
+			}
+			return
+		}
+	}
+
+	// Fallback for older payloads without channel info.
 	// 尝试解析为行情数据
 	var tickerData struct {
 		InstId  string `json:"instId"`
@@ -117,11 +188,11 @@ func (c *Client) handleMarketData(data json.RawMessage) {
 
 	// 尝试解析为订单簿数据
 	var bookData struct {
-		InstId  string      `json:"instId"`
-		Asks    [][]string  `json:"asks"`
-		Bids    [][]string  `json:"bids"`
-		Ts      string      `json:"ts"`
-		Checksum string      `json:"checksum"`
+		InstId   string     `json:"instId"`
+		Asks     [][]string `json:"asks"`
+		Bids     [][]string `json:"bids"`
+		Ts       string     `json:"ts"`
+		Checksum string     `json:"checksum"`
 	}
 
 	if err := json.Unmarshal(data, &bookData); err == nil && bookData.InstId != "" {
@@ -140,13 +211,37 @@ func (c *Client) handleTickerData(data *struct {
 	Vol24h  string `json:"vol24h"`
 	Ts      string `json:"ts"`
 }) {
-	// 解析数据
-	lastPrice, _ := parseFloat(data.Last)
-	open24h, _ := parseFloat(data.Open24h)
-	high24h, _ := parseFloat(data.High24h)
-	low24h, _ := parseFloat(data.Low24h)
-	volume24h, _ := parseFloat(data.Vol24h)
-	timestamp, _ := parseInt(data.Ts)
+	// 解析数据并检查错误
+	lastPrice, err := parseFloat(data.Last)
+	if err != nil {
+		logger.Warn("解析 Last 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Last), zap.Error(err))
+		return
+	}
+	open24h, err := parseFloat(data.Open24h)
+	if err != nil {
+		logger.Warn("解析 Open24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Open24h), zap.Error(err))
+		return
+	}
+	high24h, err := parseFloat(data.High24h)
+	if err != nil {
+		logger.Warn("解析 High24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.High24h), zap.Error(err))
+		return
+	}
+	low24h, err := parseFloat(data.Low24h)
+	if err != nil {
+		logger.Warn("解析 Low24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Low24h), zap.Error(err))
+		return
+	}
+	volume24h, err := parseFloat(data.Vol24h)
+	if err != nil {
+		logger.Warn("解析 Vol24h 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Vol24h), zap.Error(err))
+		return
+	}
+	timestamp, err := parseInt(data.Ts)
+	if err != nil {
+		logger.Warn("解析 Ts 价格失败", zap.String("symbol", data.InstId), zap.String("value", data.Ts), zap.Error(err))
+		return
+	}
 
 	t := time.Now()
 	if timestamp > 0 {
@@ -170,7 +265,10 @@ func (c *Client) handleTickerData(data *struct {
 	c.mutex.RUnlock()
 
 	for _, handler := range handlers {
-		go handler(tick)
+		h := handler
+		c.runHandler(func() {
+			h(tick)
+		})
 	}
 }
 
@@ -185,13 +283,37 @@ func (c *Client) handleCandleData(data []struct {
 			continue
 		}
 
-		// 解析数据
-		timestamp, _ := parseInt(item.Candle[0])
-		open, _ := parseFloat(item.Candle[1])
-		high, _ := parseFloat(item.Candle[2])
-		low, _ := parseFloat(item.Candle[3])
-		close, _ := parseFloat(item.Candle[4])
-		volume, _ := parseFloat(item.Candle[5])
+		// 解析数据并检查错误
+		timestamp, err := parseInt(item.Candle[0])
+		if err != nil {
+			logger.Warn("解析 K线 timestamp 失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[0]), zap.Error(err))
+			continue
+		}
+		open, err := parseFloat(item.Candle[1])
+		if err != nil {
+			logger.Warn("解析 K线 open 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[1]), zap.Error(err))
+			continue
+		}
+		high, err := parseFloat(item.Candle[2])
+		if err != nil {
+			logger.Warn("解析 K线 high 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[2]), zap.Error(err))
+			continue
+		}
+		low, err := parseFloat(item.Candle[3])
+		if err != nil {
+			logger.Warn("解析 K线 low 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[3]), zap.Error(err))
+			continue
+		}
+		close, err := parseFloat(item.Candle[4])
+		if err != nil {
+			logger.Warn("解析 K线 close 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[4]), zap.Error(err))
+			continue
+		}
+		volume, err := parseFloat(item.Candle[5])
+		if err != nil {
+			logger.Warn("解析 K线 volume 价格失败", zap.String("symbol", item.InstId), zap.String("value", item.Candle[5]), zap.Error(err))
+			continue
+		}
 
 		t := time.Now()
 		if timestamp > 0 {
@@ -212,12 +334,18 @@ func (c *Client) handleCandleData(data []struct {
 
 		// 调用回调函数
 		c.mutex.RLock()
-		handlers, ok := c.barHandlers[item.InstId][item.Bar]
+		symbolHandlers := c.barHandlers[item.InstId]
 		c.mutex.RUnlock()
 
-		if ok {
-			for _, handler := range handlers {
-				go handler(bar)
+		if symbolHandlers != nil {
+			handlers, ok := symbolHandlers[normalizeBarInterval(item.Bar)]
+			if ok {
+				for _, handler := range handlers {
+					h := handler
+					c.runHandler(func() {
+						h(bar)
+					})
+				}
 			}
 		}
 	}
@@ -231,9 +359,13 @@ func (c *Client) handleBookData(data *struct {
 	Ts       string     `json:"ts"`
 	Checksum string     `json:"checksum"`
 }) {
-	// 解析数据
-	timestamp, _ := parseInt(data.Ts)
-	checksum, _ := parseInt(data.Checksum)
+	// 解析数据并检查错误
+	timestamp, err := parseInt(data.Ts)
+	if err != nil {
+		logger.Warn("解析订单簿 Ts 失败", zap.String("symbol", data.InstId), zap.String("value", data.Ts), zap.Error(err))
+		// 继续处理，使用当前时间作为 fallback
+	}
+	checksum, _ := parseInt(data.Checksum) // checksum 可选，不需要错误处理
 
 	t := time.Now()
 	if timestamp > 0 {
@@ -250,29 +382,55 @@ func (c *Client) handleBookData(data *struct {
 	}
 
 	// 解析卖单
+	hasValidAsks := false
 	for _, ask := range data.Asks {
 		if len(ask) < 2 {
 			continue
 		}
-		price, _ := parseFloat(ask[0])
-		size, _ := parseFloat(ask[1])
+		price, err := parseFloat(ask[0])
+		if err != nil {
+			logger.Warn("解析卖单价格失败", zap.String("symbol", data.InstId), zap.String("value", ask[0]), zap.Error(err))
+			continue
+		}
+		size, err := parseFloat(ask[1])
+		if err != nil {
+			logger.Warn("解析卖单数量失败", zap.String("symbol", data.InstId), zap.String("value", ask[1]), zap.Error(err))
+			continue
+		}
 		orderBook.Asks = append(orderBook.Asks, types.OrderBookLevel{
 			Price: price,
 			Size:  size,
 		})
+		hasValidAsks = true
 	}
 
 	// 解析买单
+	hasValidBids := false
 	for _, bid := range data.Bids {
 		if len(bid) < 2 {
 			continue
 		}
-		price, _ := parseFloat(bid[0])
-		size, _ := parseFloat(bid[1])
+		price, err := parseFloat(bid[0])
+		if err != nil {
+			logger.Warn("解析买单价格失败", zap.String("symbol", data.InstId), zap.String("value", bid[0]), zap.Error(err))
+			continue
+		}
+		size, err := parseFloat(bid[1])
+		if err != nil {
+			logger.Warn("解析买单数量失败", zap.String("symbol", data.InstId), zap.String("value", bid[1]), zap.Error(err))
+			continue
+		}
 		orderBook.Bids = append(orderBook.Bids, types.OrderBookLevel{
 			Price: price,
 			Size:  size,
 		})
+		hasValidBids = true
+	}
+
+	// 如果没有有效的价格数据，不要继续处理
+	if !hasValidAsks && !hasValidBids {
+		logger.Warn("订单簿没有有效的价格数据", zap.String("symbol", data.InstId))
+		return
 	}
 
 	// 调用回调函数
@@ -281,6 +439,9 @@ func (c *Client) handleBookData(data *struct {
 	c.mutex.RUnlock()
 
 	for _, handler := range handlers {
-		go handler(orderBook)
+		h := handler
+		c.runHandler(func() {
+			h(orderBook)
+		})
 	}
 }

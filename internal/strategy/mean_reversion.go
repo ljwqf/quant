@@ -491,6 +491,7 @@ func (s *MeanReversionStrategy) SetParams(params map[string]interface{}) {
 	for k, v := range params {
 		s.params[k] = v
 	}
+	s.updateIndicators()
 }
 
 func (s *MeanReversionStrategy) GetMetrics() map[string]interface{} {
