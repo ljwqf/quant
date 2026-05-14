@@ -26,6 +26,25 @@ type Config struct {
 	Alert         AlertServiceConfig  `mapstructure:"alert"`
 	DataService   DataServiceConfig   `mapstructure:"data_service"`
 	Notifications NotificationsConfig `mapstructure:"notifications"`
+	V2Pipeline    V2PipelineConfig    `mapstructure:"v2_pipeline"`
+}
+
+type V2PipelineConfig struct {
+	Enable               bool     `mapstructure:"enable"`
+	Mode                 string   `mapstructure:"mode"`
+	Symbols              []string `mapstructure:"symbols"`
+	Intervals            []string `mapstructure:"intervals"`
+	LogDir               string   `mapstructure:"log_dir"`
+	MissedSignalBps      float64  `mapstructure:"missed_signal_bps"`
+	OpenThreshold        float64  `mapstructure:"open_threshold"`
+	CooldownSeconds      int      `mapstructure:"cooldown_seconds"`
+	BaseCapital          float64  `mapstructure:"base_capital"`
+	BaseRiskPercent      float64  `mapstructure:"base_risk_percent"`
+	ProfitRiskPercent    float64  `mapstructure:"profit_risk_percent"`
+	MaxLossPerTradeBps   float64  `mapstructure:"max_loss_per_trade_bps"`
+	MaxLossPerDayBps     float64  `mapstructure:"max_loss_per_day_bps"`
+	MaxLossPerWeekBps    float64  `mapstructure:"max_loss_per_week_bps"`
+	MaxConsecutiveLosses int      `mapstructure:"max_consecutive_losses"`
 }
 
 // DatabaseConfig 数据库配置
@@ -187,9 +206,9 @@ type OKXConfig struct {
 	WSURL           string        `mapstructure:"ws_url"`
 	Timeout         time.Duration `mapstructure:"timeout"`
 	RetryCount      int           `mapstructure:"retry_count"`
-	Simulated       bool          `mapstructure:"simulated"`       // 是否使用模拟盘
-	MarginMode      string        `mapstructure:"margin_mode"`     // 交易模式：isolated(逐仓) / cross(全仓)，默认 isolated
-	ProxyURL        string        `mapstructure:"proxy_url"`       // 代理 URL（用于国内服务器转发到海外）
+	Simulated       bool          `mapstructure:"simulated"`         // 是否使用模拟盘
+	MarginMode      string        `mapstructure:"margin_mode"`       // 交易模式：isolated(逐仓) / cross(全仓)，默认 isolated
+	ProxyURL        string        `mapstructure:"proxy_url"`         // 代理 URL（用于国内服务器转发到海外）
 	ProxySkipVerify bool          `mapstructure:"proxy_skip_verify"` // 跳过代理 TLS 证书验证（自签名证书时使用）
 }
 

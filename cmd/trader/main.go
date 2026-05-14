@@ -16,6 +16,7 @@ import (
 	"github.com/ljwqf/quant/internal/api"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/internal/dataservice"
+	"github.com/ljwqf/quant/internal/exchange"
 	"github.com/ljwqf/quant/internal/exchange/okx"
 	"github.com/ljwqf/quant/internal/execution"
 	"github.com/ljwqf/quant/internal/llmanalysis"
@@ -26,6 +27,8 @@ import (
 	"github.com/ljwqf/quant/internal/storage"
 	"github.com/ljwqf/quant/internal/storage/repository"
 	"github.com/ljwqf/quant/internal/strategy"
+	v2adapter "github.com/ljwqf/quant/internal/v2/adapter"
+	v2decision "github.com/ljwqf/quant/internal/v2/decision"
 	"github.com/ljwqf/quant/pkg/logger"
 	"github.com/ljwqf/quant/pkg/types"
 	"go.uber.org/zap"
@@ -56,14 +59,14 @@ func buildSmartFilterRefreshConfig(cfg *config.Config) *smartFilterRefreshConfig
 	}
 
 	return &smartFilterRefreshConfig{
-		Enabled:              enabled,
-		Source:               source,
-		Interval:             interval,
-		FilePath:             filePath,
-		HTTPURL:              httpURL,
-		HTTPTimeout:          httpTimeout,
-		CryptoQuantAsset:     cryptoQuantAsset,
-		CryptoQuantAPIKey:    cryptoQuantAPIKey,
+		Enabled:           enabled,
+		Source:            source,
+		Interval:          interval,
+		FilePath:          filePath,
+		HTTPURL:           httpURL,
+		HTTPTimeout:       httpTimeout,
+		CryptoQuantAsset:  cryptoQuantAsset,
+		CryptoQuantAPIKey: cryptoQuantAPIKey,
 	}
 }
 
@@ -200,8 +203,10 @@ func validateTradingMode(exchange *okx.Client, simulated bool) error {
 func main() {
 	var configPath string
 	var env string
+	var runMode string
 	flag.StringVar(&configPath, "config", "", "配置文件路径 (优先级高于 -env)")
 	flag.StringVar(&env, "env", "", "运行环境: simulation(模拟盘) 或 production(实盘)，也可通过 QUANT_ENV 环境变量设置")
+	flag.StringVar(&runMode, "mode", "v1", "运行模式: v1(默认,仅V1策略)、v2(仅V2流动性策略)、dual(V1+V2并行,V2只记录)")
 	flag.Parse()
 
 	// 环境切换逻辑：命令行参数 > 环境变量 > 默认配置
@@ -653,7 +658,7 @@ func main() {
 			"TrendFollowingStrategy",
 			"MeanReversionStrategy",
 			"VolatilityBreakoutStrategy",
-				"TestBuySellStrategy",
+			"TestBuySellStrategy",
 		}),
 		zap.Strings("auxiliary_modules", []string{
 			"SmartFilter",
@@ -1157,6 +1162,14 @@ func main() {
 	}
 	logger.Info("Dashboard已启动", zap.String("url", fmt.Sprintf("http://%s:%d", dashboardHost, cfg.Server.Port)))
 
+	v2Pipeline := startV2Pipeline(runMode, cfg, exchange)
+	if v2Pipeline != nil {
+		logger.Info("V2流动性策略管道已启动",
+			zap.String("mode", runMode),
+			zap.Strings("symbols", cfg.V2Pipeline.Symbols),
+		)
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -1212,6 +1225,11 @@ func main() {
 		exchange.Disconnect()
 		logger.Info("交易所连接已断开")
 	}()
+
+	if v2Pipeline != nil {
+		v2Pipeline.Stop()
+		logger.Info("V2流动性策略管道已停止")
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -1430,4 +1448,101 @@ func envFloat64OrDefault(key string, fallback float64) float64 {
 	}
 
 	return parsed
+}
+
+type v2PipelineHandle struct {
+	pipeline *v2decision.FullPipeline
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+func (h *v2PipelineHandle) Stop() {
+	h.cancel()
+	h.pipeline.Stop()
+}
+
+func startV2Pipeline(runMode string, cfg *config.Config, exchangeObj exchange.Exchange) *v2PipelineHandle {
+	if runMode == "v1" && !cfg.V2Pipeline.Enable {
+		return nil
+	}
+	if !cfg.V2Pipeline.Enable && runMode != "v2" && runMode != "dual" {
+		return nil
+	}
+
+	v2Cfg := cfg.V2Pipeline
+	if len(v2Cfg.Symbols) == 0 {
+		v2Cfg.Symbols = []string{"BTC-USDT", "ETH-USDT"}
+	}
+	if len(v2Cfg.Intervals) == 0 {
+		v2Cfg.Intervals = []string{"1m", "5m", "1H", "4H"}
+	}
+	if v2Cfg.LogDir == "" {
+		v2Cfg.LogDir = "logs/v2_pipeline"
+	}
+	if v2Cfg.MissedSignalBps == 0 {
+		v2Cfg.MissedSignalBps = 200
+	}
+	if v2Cfg.OpenThreshold == 0 {
+		v2Cfg.OpenThreshold = 0.72
+	}
+	if v2Cfg.CooldownSeconds == 0 {
+		v2Cfg.CooldownSeconds = 30
+	}
+	if v2Cfg.BaseCapital == 0 {
+		v2Cfg.BaseCapital = 10000
+	}
+	if v2Cfg.BaseRiskPercent == 0 {
+		v2Cfg.BaseRiskPercent = 0.01
+	}
+	if v2Cfg.ProfitRiskPercent == 0 {
+		v2Cfg.ProfitRiskPercent = 0.02
+	}
+	if v2Cfg.MaxLossPerTradeBps == 0 {
+		v2Cfg.MaxLossPerTradeBps = 100
+	}
+	if v2Cfg.MaxLossPerDayBps == 0 {
+		v2Cfg.MaxLossPerDayBps = 500
+	}
+	if v2Cfg.MaxLossPerWeekBps == 0 {
+		v2Cfg.MaxLossPerWeekBps = 1500
+	}
+	if v2Cfg.MaxConsecutiveLosses == 0 {
+		v2Cfg.MaxConsecutiveLosses = 5
+	}
+
+	pipelineConfig := v2decision.FullPipelineConfig{
+		Symbols:              v2Cfg.Symbols,
+		Intervals:            v2Cfg.Intervals,
+		LogDir:               v2Cfg.LogDir,
+		MissedSignalBps:      v2Cfg.MissedSignalBps,
+		OpenThreshold:        v2Cfg.OpenThreshold,
+		CooldownDuration:     time.Duration(v2Cfg.CooldownSeconds) * time.Second,
+		SpreadPenalty:        0.25,
+		StructuralStopBps:    20,
+		HuntingDeltaRatio:    0.65,
+		ImbalanceDeltaRatio:  0.55,
+		BaseCapital:          v2Cfg.BaseCapital,
+		BaseRiskPercent:      v2Cfg.BaseRiskPercent,
+		ProfitRiskPercent:    v2Cfg.ProfitRiskPercent,
+		MaxLossPerTradeBps:   v2Cfg.MaxLossPerTradeBps,
+		MaxLossPerDayBps:     v2Cfg.MaxLossPerDayBps,
+		MaxLossPerWeekBps:    v2Cfg.MaxLossPerWeekBps,
+		MaxConsecutiveLosses: v2Cfg.MaxConsecutiveLosses,
+	}
+
+	provider := v2adapter.NewV1ExchangeAdapter(exchangeObj)
+	pipeline, err := v2decision.NewFullPipeline(pipelineConfig, provider)
+	if err != nil {
+		logger.Error("V2 pipeline初始化失败", zap.Error(err))
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := pipeline.Start(ctx); err != nil {
+		logger.Error("V2 pipeline启动失败", zap.Error(err))
+		cancel()
+		return nil
+	}
+
+	return &v2PipelineHandle{pipeline: pipeline, ctx: ctx, cancel: cancel}
 }
