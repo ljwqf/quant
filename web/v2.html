@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V2 流动性策略面板</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/v2-app.js" defer></script>
+</head>
+<body>
+    <div class="dashboard">
+        <header class="header">
+            <div class="logo">
+                <h1>V2 流动性策略</h1>
+            </div>
+            <div class="status-bar">
+                <a href="/" class="btn btn-secondary" style="text-decoration: none;">返回主面板</a>
+                <span id="v2-connection-status" class="status-indicator disconnected">未连接</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="section system-status">
+                <h2>Pipeline 状态</h2>
+                <div class="cards">
+                    <div class="card">
+                        <div class="card-title">启用状态</div>
+                        <div class="card-value" id="v2-enabled">--</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">运行模式</div>
+                        <div class="card-value" id="v2-mode">--</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pipeline</div>
+                        <div class="card-value" id="v2-running">--</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">只读风控</div>
+                        <div class="card-value" id="v2-read-only">--</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section system-status">
+                <h2>资金与模拟盘</h2>
+                <div class="cards">
+                    <div class="card">
+                        <div class="card-title">基础资金</div>
+                        <div class="card-value" id="v2-base-capital">--</div>
+                        <div class="card-unit">USDT</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">利润子弹池</div>
+                        <div class="card-value" id="v2-profit-pool">--</div>
+                        <div class="card-unit">USDT</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">模拟订单</div>
+                        <div class="card-value" id="v2-paper-orders">--</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">模拟盈亏</div>
+                        <div class="card-value" id="v2-paper-pnl">--</div>
+                        <div class="card-unit">USDT</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>策略状态</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>交易对</th>
+                                <th>状态机</th>
+                            </tr>
+                        </thead>
+                        <tbody id="v2-symbol-states">
+                            <tr><td colspan="2">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

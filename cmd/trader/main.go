@@ -1164,6 +1164,7 @@ func main() {
 
 	v2Pipeline := startV2Pipeline(runMode, cfg, exchange)
 	if v2Pipeline != nil {
+		apiServer.SetV2Pipeline(v2Pipeline)
 		logger.Info("V2流动性策略管道已启动",
 			zap.String("mode", runMode),
 			zap.Strings("symbols", cfg.V2Pipeline.Symbols),
@@ -1454,6 +1455,10 @@ type v2PipelineHandle struct {
 	pipeline *v2decision.FullPipeline
 	ctx      context.Context
 	cancel   context.CancelFunc
+}
+
+func (h *v2PipelineHandle) Status() map[string]interface{} {
+	return h.pipeline.Status()
 }
 
 func (h *v2PipelineHandle) Stop() {

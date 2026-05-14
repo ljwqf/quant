@@ -115,9 +115,6 @@ func (g *RiskGuard) CheckStructuralStop(positionSide events.Side, currentPrice f
 	}
 
 	buffer := stopRule.BufferBps / 10000
-	if stopRule.Side == "" {
-		stopRule.Side = stopRule.Side
-	}
 
 	switch stopRule.StrategyID {
 	case "LQT_Down01":

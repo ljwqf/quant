@@ -57,6 +57,10 @@ type createOrderRequest struct {
 	Size   float64 `json:"size"`
 }
 
+type V2PipelineStatus interface {
+	Status() map[string]interface{}
+}
+
 type resetRebalanceCircuitRequest struct {
 	Reason string `json:"reason"`
 }
@@ -99,6 +103,7 @@ type Server struct {
 	orders       []*OrderInfo
 	signals      []*SignalInfo
 	rebalance    []*RebalanceEventInfo
+	v2Pipeline   V2PipelineStatus
 }
 
 type rateBucket struct {
@@ -345,6 +350,12 @@ func (s *Server) SetIndicatorSet(indicatorSet *indicator.IndicatorSet) {
 	s.indicatorSet = indicatorSet
 }
 
+func (s *Server) SetV2Pipeline(v2Pipeline V2PipelineStatus) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.v2Pipeline = v2Pipeline
+}
+
 // GetWebSocketHub 获取WebSocket Hub，用于注册WebSocket通道
 func (s *Server) GetWebSocketHub() *WebSocketHub {
 	return s.wsHub
@@ -436,6 +447,11 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/market/bars", s.handleGetBars)
 	s.mux.HandleFunc("/api/market/orderbook", s.handleGetOrderBook)
 
+	// V2 流动性策略API路由（Phase 6 防腐层，不与V1冲突）
+	s.mux.HandleFunc("/api/v2/status", s.handleV2Status)
+	s.mux.HandleFunc("/api/v2/liquidity", s.handleV2Liquidity)
+	s.mux.HandleFunc("/v2.html", s.handleV2Dashboard)
+
 	// 大模型分析API路由
 	s.mux.HandleFunc("/api/llm/analyze/trade", s.handleLLMAnalyzeTrade)
 	s.mux.HandleFunc("/api/llm/analyze/positions", s.handleLLMAnalyzePositions)
@@ -524,7 +540,7 @@ func (s *Server) Start() error {
 		Addr:         net.JoinHostPort(s.host, strconv.Itoa(s.port)),
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,  // LLM 分析可能耗时较长
+		WriteTimeout: 5 * time.Minute, // LLM 分析可能耗时较长
 		IdleTimeout:  120 * time.Second,
 	}
 
@@ -2912,8 +2928,8 @@ type backtestTask struct {
 }
 
 var (
-	backtestTasks       = make(map[string]*backtestTask)
-	backtestTasksMutex  sync.RWMutex
+	backtestTasks      = make(map[string]*backtestTask)
+	backtestTasksMutex sync.RWMutex
 )
 
 // cleanupExpiredBacktestTasks 清理已完成超过 1 小时的回测任务
@@ -3438,4 +3454,74 @@ func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request)
 	if output != "" {
 		w.Write([]byte(output))
 	}
+}
+
+func (s *Server) handleV2Status(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if s.v2Pipeline == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"enabled": false,
+			"mode":    s.cfg.V2Pipeline.Mode,
+		})
+		return
+	}
+
+	status := s.v2Pipeline.Status()
+	status["enabled"] = true
+	status["mode"] = s.cfg.V2Pipeline.Mode
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleV2Liquidity(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireReadAccess(w, r) {
+		return
+	}
+
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		symbol = "BTC-USDT"
+	}
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if s.v2Pipeline == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"symbol":  symbol,
+			"state":   "Idle",
+			"enabled": false,
+		})
+		return
+	}
+
+	status := s.v2Pipeline.Status()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"symbol":      symbol,
+		"enabled":     true,
+		"state":       status[symbol+"_state"],
+		"profit_pool": status["profit_pool"],
+		"read_only":   status["read_only"],
+		"paper_stats": status["paper_stats"],
+	})
+}
+
+func (s *Server) handleV2Dashboard(w http.ResponseWriter, r *http.Request) {
+	if !s.requireReadAccess(w, r) {
+		return
+	}
+	http.ServeFile(w, r, "./web/v2.html")
 }

@@ -581,6 +581,40 @@ func TestReadyEndpointReturnsUnavailableWhenSystemNotRunning(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), `"system_status":"not running"`)
 }
 
+type testV2Pipeline struct{}
+
+func (testV2Pipeline) Status() map[string]interface{} {
+	return map[string]interface{}{
+		"BTC-USDT_state": "Watching",
+		"profit_pool":    12.5,
+		"base_capital":   10000.0,
+		"read_only":      true,
+		"paper_stats": map[string]interface{}{
+			"orders": 2,
+			"pnl":    7.5,
+		},
+		"running": true,
+	}
+}
+
+func TestV2StatusReturnsDisabledWhenPipelineMissing(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/v2/status", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"enabled":false`)
+}
+
+func TestV2StatusReturnsPipelineStatus(t *testing.T) {
+	s := NewServer("127.0.0.1", 8765, testConfig(), "", nil)
+	s.SetV2Pipeline(testV2Pipeline{})
+
+	recorder := performRequest(t, s, http.MethodGet, "/api/v2/status", nil, "127.0.0.1:12345", nil)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"enabled":true`)
+	assert.Contains(t, recorder.Body.String(), `"BTC-USDT_state":"Watching"`)
+}
+
 func performRequest(t *testing.T, server *Server, method, path string, body *bytes.Reader, remoteAddr string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -751,7 +785,9 @@ func (m *apiManualTradeExchange) CancelAlgoOrder(algoID, symbol string) error { 
 func (m *apiManualTradeExchange) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
 	return nil, nil
 }
-func (m *apiManualTradeExchange) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
+func (m *apiManualTradeExchange) GetFundingRate(instId string) (*types.FundingRate, error) {
+	return nil, nil
+}
 
 func newAPIManualTradeServer(t *testing.T) (*Server, *apiManualTradeExchange) {
 	t.Helper()
