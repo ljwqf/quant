@@ -98,6 +98,7 @@ func convertOrderBook(book *types.OrderBook) events.OrderBookEvent {
 		Asks:      asks,
 		Timestamp: book.Timestamp,
 		Checksum:  book.Checksum,
+		Snapshot:  true,
 	}
 }
 

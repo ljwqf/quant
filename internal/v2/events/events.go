@@ -58,6 +58,7 @@ type OrderBookEvent struct {
 	Timestamp time.Time
 	Sequence  int64
 	Checksum  int64
+	Snapshot  bool
 }
 
 type KlineEvent struct {
