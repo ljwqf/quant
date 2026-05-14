@@ -183,17 +183,17 @@ const (
 
 func NewEngine(ex exchange.Exchange, riskEngine *risk.Engine, strategyEngine *strategy.Engine) *Engine {
 	return &Engine{
-		exchange:          ex,
-		riskEngine:        riskEngine,
-		strategyEngine:    strategyEngine,
-		takeProfitManager: NewTakeProfitManager(nil),
-		bayesianAllocator: strategy.NewOnlineBayesianAllocator(),
-		smartRouteConfig:  defaultSmartRouteConfig(),
-		rebalanceConfig:   defaultRebalanceConfig(),
-		orders:            make(map[string]*types.Order),
-		algoOrders:        make(map[string]*types.AlgoOrder),
-		strategyPositions: make(map[string]map[string]*strategyPosition),
-		metrics:           make(map[string]interface{}),
+		exchange:            ex,
+		riskEngine:          riskEngine,
+		strategyEngine:      strategyEngine,
+		takeProfitManager:   NewTakeProfitManager(nil),
+		bayesianAllocator:   strategy.NewOnlineBayesianAllocator(),
+		smartRouteConfig:    defaultSmartRouteConfig(),
+		rebalanceConfig:     defaultRebalanceConfig(),
+		orders:              make(map[string]*types.Order),
+		algoOrders:          make(map[string]*types.AlgoOrder),
+		strategyPositions:   make(map[string]map[string]*strategyPosition),
+		metrics:             make(map[string]interface{}),
 		signalDedupCooldown: 60 * time.Second,
 		lastSignalTime:      make(map[string]time.Time),
 		pendingOrders:       make(map[string][]string),
@@ -203,16 +203,16 @@ func NewEngine(ex exchange.Exchange, riskEngine *risk.Engine, strategyEngine *st
 
 func NewEngineWithConfig(ex exchange.Exchange, riskEngine *risk.Engine, strategyEngine *strategy.Engine, config *EngineConfig) *Engine {
 	engine := &Engine{
-		exchange:          ex,
-		riskEngine:        riskEngine,
-		strategyEngine:    strategyEngine,
-		bayesianAllocator: strategy.NewOnlineBayesianAllocator(),
-		smartRouteConfig:  defaultSmartRouteConfig(),
-		rebalanceConfig:   defaultRebalanceConfig(),
-		orders:            make(map[string]*types.Order),
-		algoOrders:        make(map[string]*types.AlgoOrder),
-		strategyPositions: make(map[string]map[string]*strategyPosition),
-		metrics:           make(map[string]interface{}),
+		exchange:            ex,
+		riskEngine:          riskEngine,
+		strategyEngine:      strategyEngine,
+		bayesianAllocator:   strategy.NewOnlineBayesianAllocator(),
+		smartRouteConfig:    defaultSmartRouteConfig(),
+		rebalanceConfig:     defaultRebalanceConfig(),
+		orders:              make(map[string]*types.Order),
+		algoOrders:          make(map[string]*types.AlgoOrder),
+		strategyPositions:   make(map[string]map[string]*strategyPosition),
+		metrics:             make(map[string]interface{}),
 		signalDedupCooldown: 60 * time.Second,
 		lastSignalTime:      make(map[string]time.Time),
 		pendingOrders:       make(map[string][]string),
@@ -621,14 +621,18 @@ func (e *Engine) executeInternal(signal *types.Signal, accountBalance float64, d
 		order, result, err = e.executeExitSignal(signal, allocation.Amount)
 	} else {
 		plannedSignal := *signal
-		// 始终使用风控引擎计算的仓位大小，忽略策略硬编码数量
-		// （策略的 Quantity 仅作为信号指示，实际仓位由风控预算决定）
+		rebalanceQty := rebalanceRecommendedQuantity(signal)
+		if rebalanceQty > 0 {
+			plannedSignal.Quantity = rebalanceQty
+		} else {
+			plannedSignal.Quantity = e.riskEngine.GetPositionSize(signal, allocation.Amount)
+		}
 		logger.Info("计算仓位参数",
 			zap.String("strategy", signal.Strategy),
 			zap.Float64("price", signal.Price),
 			zap.Float64("allocationAmount", allocation.Amount),
+			zap.Float64("quantity", plannedSignal.Quantity),
 		)
-		plannedSignal.Quantity = e.riskEngine.GetPositionSize(signal, allocation.Amount)
 		if plannedSignal.Quantity <= 0 {
 			logger.Error("计算仓位大小失败",
 				zap.String("strategy", signal.Strategy),
@@ -693,6 +697,25 @@ func (e *Engine) executeInternal(signal *types.Signal, accountBalance float64, d
 	}
 
 	return result, nil
+}
+
+func rebalanceRecommendedQuantity(signal *types.Signal) float64 {
+	if signal.Metadata == nil {
+		return 0
+	}
+	metadata, ok := signal.Metadata.(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	source, _ := metadata["source"].(string)
+	if source != "rebalance_entry" {
+		return 0
+	}
+	qty, ok := metadata["recommended_quantity"].(float64)
+	if ok && qty > 0 {
+		return qty
+	}
+	return 0
 }
 
 func (e *Engine) executeEntrySignal(signal *types.Signal, accountBalance float64) (*types.Order, *types.OrderResult, error) {
@@ -3073,7 +3096,7 @@ func (e *Engine) StartOrderMonitor() {
 		// 调整轮询间隔至 2 秒，避免触发 OKX API 限频（私有接口限制：10 次/2s）
 		// 添加 jitter 防止多实例同时请求
 		baseInterval := 2 * time.Second
-		jitter := time.Duration(float64(baseInterval) * 0.1) // 10% jitter
+		jitter := time.Duration(float64(baseInterval) * 0.1)       // 10% jitter
 		initialDelay := time.Duration(float64(baseInterval) * 0.5) // 随机初始延迟 0-1s
 
 		// 首次延迟避免启动时集中请求
