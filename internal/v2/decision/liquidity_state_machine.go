@@ -69,6 +69,11 @@ func (m *LiquidityStateMachine) State(symbol string) events.StrategyState {
 	return state
 }
 
+func (m *LiquidityStateMachine) SetState(symbol string, state events.StrategyState, lastChange time.Time) {
+	m.states[symbol] = state
+	m.lastChange[symbol] = lastChange
+}
+
 func (m *LiquidityStateMachine) Transitions() []events.StateTransition {
 	result := make([]events.StateTransition, len(m.transitions))
 	copy(result, m.transitions)
