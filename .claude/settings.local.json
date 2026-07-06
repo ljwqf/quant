@@ -9,7 +9,25 @@
       "Bash(go tool:*)",
       "Bash(ssh *)",
       "Bash(python3 *)",
-      "Bash(scp *)"
+      "Bash(scp *)",
+      "Bash(git stash *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(git log *)",
+      "Bash(go get *)",
+      "Bash(GONOSUMCHECK=* GONOSUMDB=* GOPROXY=direct go mod download github.com/spf13/viper@v1.21.0)",
+      "Bash(GONOSUMCHECK=* GONOSUMDB=* GOPROXY=direct go build ./...)",
+      "Bash(bash *)",
+      "Bash(bin/log-server -addr :8443 -ca-cert certs/ca.crt -server-cert certs/server.crt -server-key certs/server.key -log-dir ./logs_received)",
+      "Bash(bin/log-client -ca-cert certs/ca.crt -client-cert certs/client.crt -client-key certs/client.key -server 127.0.0.1:8443 -gen-test 3)",
+      "Bash(bin/log-server -addr :8500 -ca-cert certs/ca.crt -server-cert certs/server.crt -server-key certs/server.key -log-dir ./logs_received)",
+      "Bash(bin/log-client -ca-cert certs/ca.crt -client-cert certs/client.crt -client-key certs/client.key -server 127.0.0.1:8500 -gen-test 3)",
+      "Bash(bin/log-client -ca-cert certs/ca.crt -client-cert certs/client.crt -client-key certs/client.key -server 127.0.0.1:8501 -gen-test 3)",
+      "Bash(pkill -f log-server)",
+      "Bash(bin/log-client *)",
+      "Bash(bin/syslog-client *)",
+      "Bash(pkill -f \"ssh.*-L 18514\")"
     ]
   }
 }
