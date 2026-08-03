@@ -639,28 +639,50 @@ function updateStrategies(strategies) {
         return;
     }
 
-    tbody.innerHTML = strategies.map(s => `
-        <tr>
-            <td data-label="策略名称">${s.name}</td>
-            <td data-label="状态"><span class="badge ${s.running ? 'running' : 'stopped'}">${s.running ? '运行中' : '已停止'}</span></td>
-            <td data-label="盈亏" class="${s.pnl >= 0 ? 'positive' : 'negative'}">${formatNumber(s.pnl)}</td>
-            <td data-label="胜率">${formatPercent(s.win_rate)}</td>
-            <td data-label="交易次数">${s.trades}</td>
-            <td data-label="权重">${s.weight ? (s.weight * 100).toFixed(0) + '%' : '--'}</td>
-            <td data-label="最近信号">${s.last_signal || '--'}</td>
-            <td data-label="操作">
-                <button class="btn btn-small ${s.running ? 'btn-danger' : 'btn-success'}" 
-                        onclick="toggleStrategy('${s.name}', ${!s.running})">
-                    ${s.running ? '停止' : '启动'}
-                </button>
-                <button class="btn btn-small btn-secondary" 
-                        onclick="openStrategyParamPanel('${s.name}')"
-                        style="margin-left: 0.5rem;">
-                    配置
-                </button>
-            </td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = strategies.map(s => {
+        const name = String(s.name || '');
+        const safeName = escapeHtml(name);
+        const safeLastSignal = escapeHtml(s.last_signal || '--');
+        const safeTrades = escapeHtml(s.trades ?? '--');
+        const weightText = s.weight ? (s.weight * 100).toFixed(0) + '%' : '--';
+
+        return `
+            <tr>
+                <td data-label="策略名称">${safeName}</td>
+                <td data-label="状态"><span class="badge ${s.running ? 'running' : 'stopped'}">${s.running ? '运行中' : '已停止'}</span></td>
+                <td data-label="盈亏" class="${s.pnl >= 0 ? 'positive' : 'negative'}">${formatNumber(s.pnl)}</td>
+                <td data-label="胜率">${formatPercent(s.win_rate)}</td>
+                <td data-label="交易次数">${safeTrades}</td>
+                <td data-label="权重">${weightText}</td>
+                <td data-label="最近信号">${safeLastSignal}</td>
+                <td data-label="操作">
+                    <button class="btn btn-small ${s.running ? 'btn-danger' : 'btn-success'}"
+                            data-strategy-action="toggle"
+                            data-strategy-name="${safeName}"
+                            data-next-running="${!s.running}">
+                        ${s.running ? '停止' : '启动'}
+                    </button>
+                    <button class="btn btn-small btn-secondary"
+                            data-strategy-action="config"
+                            data-strategy-name="${safeName}"
+                            style="margin-left: 0.5rem;">
+                        配置
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.querySelectorAll('[data-strategy-action="toggle"]').forEach(button => {
+        button.addEventListener('click', () => {
+            toggleStrategy(button.dataset.strategyName || '', button.dataset.nextRunning === 'true');
+        });
+    });
+    tbody.querySelectorAll('[data-strategy-action="config"]').forEach(button => {
+        button.addEventListener('click', () => {
+            openStrategyParamPanel(button.dataset.strategyName || '');
+        });
+    });
 }
 
 // 打开策略参数配置面板
@@ -675,7 +697,7 @@ async function openStrategyParamPanel(strategyName) {
     panel.classList.remove('hidden');
     
     try {
-        const response = await fetch(`/api/strategy/params/${strategyName}`, {
+        const response = await fetch(`/api/strategy/params/${encodeURIComponent(strategyName)}`, {
             headers: buildAuthHeaders()
         });
         const data = await response.json();
@@ -690,7 +712,7 @@ async function openStrategyParamPanel(strategyName) {
         content.innerHTML = `<div class="empty-state">
             <div class="empty-state-icon">⚠️</div>
             <div class="empty-state-text">加载失败</div>
-            <div class="empty-state-hint">${error.message}</div>
+            <div class="empty-state-hint">${escapeHtml(error.message)}</div>
         </div>`;
     }
 }
@@ -714,7 +736,7 @@ function renderStrategyParams(data) {
             </div>
             <div class="param-input-item">
                 <label>策略权重 (0-1)</label>
-                <input type="number" id="param-weight" value="${data.weight}" step="0.01" min="0" max="1">
+                <input type="number" id="param-weight" value="${escapeHtml(data.weight)}" step="0.01" min="0" max="1">
                 <div class="param-description">策略在组合中的权重占比</div>
             </div>
         </div>
@@ -727,36 +749,38 @@ function renderStrategyParams(data) {
         
         data.schema.params.forEach(param => {
             const currentValue = data.params && data.params[param.name] !== undefined ? data.params[param.name] : param.default_value;
+            const safeParamName = escapeHtml(param.name);
+            const safeCurrentValue = escapeHtml(currentValue ?? '');
+            const minAttr = param.min_value !== undefined ? `min="${escapeHtml(param.min_value)}"` : '';
+            const maxAttr = param.max_value !== undefined ? `max="${escapeHtml(param.max_value)}"` : '';
             
             html += `<div class="param-input-item">
-                <label>${param.name} ${param.required ? '<span style="color: var(--danger);">*</span>' : ''}</label>`;
+                <label>${safeParamName} ${param.required ? '<span style="color: var(--danger);">*</span>' : ''}</label>`;
             
             switch (param.type) {
                 case 'int':
-                    html += `<input type="number" id="param-${param.name}" value="${currentValue}" 
-                             step="1" ${param.min_value !== undefined ? `min="${param.min_value}"` : ''} 
-                             ${param.max_value !== undefined ? `max="${param.max_value}"` : ''}>`;
+                    html += `<input type="number" id="param-${safeParamName}" value="${safeCurrentValue}" 
+                             step="1" ${minAttr} ${maxAttr}>`;
                     break;
                 case 'float':
-                    html += `<input type="number" id="param-${param.name}" value="${currentValue}" 
-                             step="0.0001" ${param.min_value !== undefined ? `min="${param.min_value}"` : ''} 
-                             ${param.max_value !== undefined ? `max="${param.max_value}"` : ''}>`;
+                    html += `<input type="number" id="param-${safeParamName}" value="${safeCurrentValue}" 
+                             step="0.0001" ${minAttr} ${maxAttr}>`;
                     break;
                 case 'bool':
-                    html += `<select id="param-${param.name}">
+                    html += `<select id="param-${safeParamName}">
                         <option value="true" ${currentValue ? 'selected' : ''}>是</option>
                         <option value="false" ${!currentValue ? 'selected' : ''}>否</option>
                     </select>`;
                     break;
                 case 'string':
-                    html += `<input type="text" id="param-${param.name}" value="${currentValue || ''}">`;
+                    html += `<input type="text" id="param-${safeParamName}" value="${safeCurrentValue}">`;
                     break;
                 default:
-                    html += `<input type="text" id="param-${param.name}" value="${currentValue || ''}">`;
+                    html += `<input type="text" id="param-${safeParamName}" value="${safeCurrentValue}">`;
             }
             
             if (param.description) {
-                html += `<div class="param-description">${param.description}</div>`;
+                html += `<div class="param-description">${escapeHtml(param.description)}</div>`;
             }
             
             if (param.min_value !== undefined || param.max_value !== undefined) {
@@ -764,7 +788,7 @@ function renderStrategyParams(data) {
                 if (param.min_value !== undefined) rangeText.push(`最小: ${param.min_value}`);
                 if (param.max_value !== undefined) rangeText.push(`最大: ${param.max_value}`);
                 if (rangeText.length > 0) {
-                    html += `<div class="param-description" style="color: var(--accent-primary);">${rangeText.join(', ')}</div>`;
+                    html += `<div class="param-description" style="color: var(--accent-primary);">${escapeHtml(rangeText.join(', '))}</div>`;
                 }
             }
             
@@ -778,9 +802,11 @@ function renderStrategyParams(data) {
         html += '<div class="param-input-group">';
         
         for (const [key, value] of Object.entries(data.params)) {
+            const safeKey = escapeHtml(key);
+            const safeValue = escapeHtml(value ?? '');
             html += `<div class="param-input-item">
-                <label>${key}</label>
-                <input type="text" id="param-${key}" value="${value || ''}">
+                <label>${safeKey}</label>
+                <input type="text" id="param-${safeKey}" value="${safeValue}">
             </div>`;
         }
         
@@ -835,7 +861,7 @@ async function saveStrategyParams() {
             requestBody.weight = parseFloat(weightInput.value);
         }
         
-        const response = await fetch(`/api/strategy/params/${currentConfigStrategy}`, {
+        const response = await fetch(`/api/strategy/params/${encodeURIComponent(currentConfigStrategy)}`, {
             method: 'POST',
             headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(requestBody)
@@ -883,21 +909,31 @@ function updatePositions(positions) {
         return;
     }
 
-    tbody.innerHTML = positions.map(p => `
+    tbody.innerHTML = positions.map(p => {
+        const symbol = escapeHtml(p.symbol);
+        const side = escapeHtml(p.side);
+        const sideClass = escapeHtml(String(p.side || '').toLowerCase());
+        return `
         <tr>
-            <td data-label="标的">${p.symbol}</td>
-            <td data-label="方向"><span class="badge ${p.side.toLowerCase()}">${p.side}</span></td>
+            <td data-label="标的">${symbol}</td>
+            <td data-label="方向"><span class="badge ${sideClass}">${side}</span></td>
             <td data-label="数量">${formatNumber(p.size)}</td>
             <td data-label="开仓价">${formatNumber(p.entry_price)}</td>
             <td data-label="标记价">${formatNumber(p.mark_price)}</td>
             <td data-label="未实现盈亏" class="${p.unrealized_pnl >= 0 ? 'positive' : 'negative'}">${formatNumber(p.unrealized_pnl)}</td>
-            <td data-label="杠杆">${p.leverage}x</td>
-            <td data-label="策略">${p.strategy}</td>
+            <td data-label="杠杆">${escapeHtml(p.leverage)}x</td>
+            <td data-label="策略">${escapeHtml(p.strategy)}</td>
             <td data-label="操作">
-                <button class="btn btn-small btn-danger" onclick="closePosition('${p.symbol}')">平仓</button>
+                <button class="btn btn-small btn-danger" data-position-action="close" data-symbol="${symbol}">平仓</button>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
+    tbody.querySelectorAll('[data-position-action="close"]').forEach(button => {
+        button.addEventListener('click', () => {
+            closePosition(button.dataset.symbol || '');
+        });
+    });
 }
 
 // 更新订单列表
@@ -908,20 +944,24 @@ function updateOrders(orders) {
         return;
     }
 
-    tbody.innerHTML = orders.map(o => `
+    tbody.innerHTML = orders.map(o => {
+        const sideClass = escapeHtml(String(o.side || '').toLowerCase());
+        const statusClass = escapeHtml(String(o.status || '').toLowerCase());
+        return `
         <tr>
-            <td data-label="订单ID">${o.order_id}</td>
-            <td data-label="标的">${o.symbol}</td>
-            <td data-label="方向"><span class="badge ${o.side.toLowerCase()}">${o.side}</span></td>
-            <td data-label="类型">${o.type}</td>
+            <td data-label="订单ID">${escapeHtml(o.order_id)}</td>
+            <td data-label="标的">${escapeHtml(o.symbol)}</td>
+            <td data-label="方向"><span class="badge ${sideClass}">${escapeHtml(o.side)}</span></td>
+            <td data-label="类型">${escapeHtml(o.type)}</td>
             <td data-label="价格">${formatNumber(o.price)}</td>
             <td data-label="数量">${formatNumber(o.size)}</td>
             <td data-label="已成交">${formatNumber(o.filled_size)}</td>
-            <td data-label="状态"><span class="badge ${o.status.toLowerCase()}">${o.status}</span></td>
-            <td data-label="策略">${o.strategy}</td>
+            <td data-label="状态"><span class="badge ${statusClass}">${escapeHtml(o.status)}</span></td>
+            <td data-label="策略">${escapeHtml(o.strategy)}</td>
             <td data-label="时间">${formatTime(o.create_time)}</td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // 添加订单
@@ -1002,20 +1042,23 @@ function updateSignals(signals) {
         return;
     }
 
-    tbody.innerHTML = signals.map(s => `
+    tbody.innerHTML = signals.map(s => {
+        const sideClass = escapeHtml(String(s.side || '').toLowerCase());
+        return `
         <tr>
-            <td data-label="信号ID">${s.id}</td>
-            <td data-label="策略">${s.strategy}</td>
-            <td data-label="标的">${s.symbol}</td>
-            <td data-label="方向"><span class="badge ${s.side.toLowerCase()}">${s.side}</span></td>
+            <td data-label="信号ID">${escapeHtml(s.id)}</td>
+            <td data-label="策略">${escapeHtml(s.strategy)}</td>
+            <td data-label="标的">${escapeHtml(s.symbol)}</td>
+            <td data-label="方向"><span class="badge ${sideClass}">${escapeHtml(s.side)}</span></td>
             <td data-label="价格">${formatNumber(s.price)}</td>
             <td data-label="数量">${formatNumber(s.size)}</td>
             <td data-label="置信度">${formatPercent(s.confidence)}</td>
-            <td data-label="原因">${s.reason || '--'}</td>
+            <td data-label="原因">${s.reason ? escapeHtml(s.reason) : '--'}</td>
             <td data-label="执行状态"><span class="badge ${s.executed ? 'filled' : 'pending'}">${s.executed ? '已执行' : '待执行'}</span></td>
             <td data-label="时间">${formatTime(s.time)}</td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // 添加信号
@@ -1027,7 +1070,7 @@ function addSignal(signal) {
 async function toggleStrategy(name, start) {
     const action = start ? 'start' : 'stop';
     try {
-        const response = await fetch(`/api/strategy/${action}/${name}`, { method: 'POST', headers: buildAuthHeaders() });
+        const response = await fetch(`/api/strategy/${action}/${encodeURIComponent(name)}`, { method: 'POST', headers: buildAuthHeaders() });
         const result = await response.json();
         console.log(`策略${action}结果:`, result);
         fetch('/api/strategies').then(r => r.json()).then(updateStrategies);
@@ -1041,7 +1084,7 @@ async function closePosition(symbol) {
     if (!confirm(`确定要平仓 ${symbol} 吗？`)) return;
     
     try {
-        const response = await fetch(`/api/position/close/${symbol}`, { method: 'POST', headers: buildAuthHeaders() });
+        const response = await fetch(`/api/position/close/${encodeURIComponent(symbol)}`, { method: 'POST', headers: buildAuthHeaders() });
         const result = await response.json();
         console.log('平仓结果:', result);
         fetch('/api/positions').then(r => r.json()).then(updatePositions);
@@ -1156,25 +1199,34 @@ async function refreshManualOrders() {
         const result = await response.json();
         
         if (result.orders && result.orders.length > 0) {
-            container.innerHTML = result.orders.map(order => `
+            container.innerHTML = result.orders.map(order => {
+                const statusClass = escapeHtml(String(order.status || '').toLowerCase());
+                const orderId = escapeHtml(order.order_id);
+                return `
                 <div class="order-item">
                     <div class="order-header">
-                        <span class="order-symbol">${order.symbol}</span>
-                        <span class="badge ${order.status.toLowerCase()}">${order.status}</span>
+                        <span class="order-symbol">${escapeHtml(order.symbol)}</span>
+                        <span class="badge ${statusClass}">${escapeHtml(order.status)}</span>
                     </div>
                     <div class="order-details">
-                        <div>方向: <span class="${order.side}">${order.side}</span></div>
-                        <div>类型: ${order.type}</div>
+                        <div>方向: <span class="${escapeHtml(order.side)}">${escapeHtml(order.side)}</span></div>
+                        <div>类型: ${escapeHtml(order.type)}</div>
                         <div>价格: ${formatNumber(order.price)}</div>
                         <div>数量: ${formatNumber(order.size)}</div>
                     </div>
                     <div class="order-actions">
-                        ${order.status === 'pending' ? 
-                            `<button class="btn btn-small btn-danger" onclick="cancelManualOrder('${order.order_id}')">撤销</button>` : 
+                        ${order.status === 'pending' ?
+                            `<button class="btn btn-small btn-danger" data-manual-action="cancel" data-order-id="${orderId}">撤销</button>` :
                             ''}
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
+            container.querySelectorAll('[data-manual-action="cancel"]').forEach(button => {
+                button.addEventListener('click', () => {
+                    cancelManualOrder(button.dataset.orderId || '');
+                });
+            });
         } else {
             container.innerHTML = '<div class="empty-text">暂无订单</div>';
         }
@@ -1189,7 +1241,7 @@ async function cancelManualOrder(orderId) {
     if (!confirm('确定要撤销此订单吗？')) return;
     
     try {
-        const response = await fetch(`/api/manual/order/${orderId}`, {
+        const response = await fetch(`/api/manual/order/${encodeURIComponent(orderId)}`, {
             method: 'DELETE',
             headers: buildAuthHeaders()
         });
@@ -1219,11 +1271,14 @@ async function refreshManualPositions() {
         const positions = await response.json();
         
         if (positions && positions.length > 0) {
-            container.innerHTML = positions.map(pos => `
+            container.innerHTML = positions.map(pos => {
+                const symbol = escapeHtml(pos.symbol);
+                const sideClass = escapeHtml(String(pos.side || '').toLowerCase());
+                return `
                 <div class="position-item">
                     <div class="position-header">
-                        <span class="position-symbol">${pos.symbol}</span>
-                        <span class="badge ${pos.side.toLowerCase()}">${pos.side}</span>
+                        <span class="position-symbol">${symbol}</span>
+                        <span class="badge ${sideClass}">${escapeHtml(pos.side)}</span>
                     </div>
                     <div class="position-details">
                         <div>数量: ${formatNumber(pos.size)}</div>
@@ -1234,11 +1289,22 @@ async function refreshManualPositions() {
                         </div>
                     </div>
                     <div class="position-actions">
-                        <button class="btn btn-small btn-danger" onclick="manualClosePosition('${pos.symbol}', ${pos.size})">平仓</button>
-                        <button class="btn btn-small btn-warning" onclick="openTrailingStopDialog('${pos.symbol}')">移动止损</button>
+                        <button class="btn btn-small btn-danger" data-manual-position="close" data-symbol="${symbol}" data-size="${escapeHtml(pos.size)}">平仓</button>
+                        <button class="btn btn-small btn-warning" data-manual-position="trailing" data-symbol="${symbol}">移动止损</button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
+            container.querySelectorAll('[data-manual-position="close"]').forEach(button => {
+                button.addEventListener('click', () => {
+                    manualClosePosition(button.dataset.symbol || '', Number(button.dataset.size || 0));
+                });
+            });
+            container.querySelectorAll('[data-manual-position="trailing"]').forEach(button => {
+                button.addEventListener('click', () => {
+                    openTrailingStopDialog(button.dataset.symbol || '');
+                });
+            });
         } else {
             container.innerHTML = '<div class="empty-text">暂无持仓</div>';
         }
@@ -1366,17 +1432,20 @@ function renderRebalanceEvents() {
         container.innerHTML = '<div class="rebalance-event-empty">等待 WebSocket 事件...</div>';
         return;
     }
-    container.innerHTML = rebalanceEvents.map(event => `
-        <article class="rebalance-event-item ${event.type}">
+    container.innerHTML = rebalanceEvents.map(event => {
+        const typeClass = escapeHtml(String(event.type || ''));
+        return `
+        <article class="rebalance-event-item ${typeClass}">
             <div class="rebalance-event-header">
-                <span class="rebalance-event-type ${event.type}">${formatRebalanceEventType(event.type)}</span>
+                <span class="rebalance-event-type ${typeClass}">${escapeHtml(formatRebalanceEventType(event.type))}</span>
                 <span class="rebalance-event-time">${formatTime(event.timestamp)}</span>
             </div>
-            <div class="rebalance-event-title">${event.strategy} / ${event.step}</div>
-            <div class="rebalance-event-message">${event.message}</div>
-            <div class="rebalance-event-meta">reason=${event.reason}</div>
+            <div class="rebalance-event-title">${escapeHtml(event.strategy)} / ${escapeHtml(event.step)}</div>
+            <div class="rebalance-event-message">${escapeHtml(event.message)}</div>
+            <div class="rebalance-event-meta">reason=${escapeHtml(event.reason)}</div>
         </article>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function formatRebalanceEventType(type) {
@@ -1408,7 +1477,8 @@ function showRuntimeNotice(message, type = 'info', duration = 4000) {
     }
 
     const notice = document.createElement('div');
-    notice.className = `toast ${type}`;
+    const noticeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+    notice.className = `toast ${noticeType}`;
     
     const icons = {
         success: '✓',
@@ -1418,8 +1488,8 @@ function showRuntimeNotice(message, type = 'info', duration = 4000) {
     };
     
     notice.innerHTML = `
-        <span class="toast-icon">${icons[type] || icons.info}</span>
-        <span class="toast-content">${message}</span>
+        <span class="toast-icon">${icons[noticeType] || icons.info}</span>
+        <span class="toast-content">${escapeHtml(message)}</span>
         <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
     `;
     
@@ -1496,7 +1566,7 @@ function showGlobalLoading(text = '加载中...') {
         overlay.id = 'global-loading-overlay';
         overlay.innerHTML = `
             <div class="loading-spinner"></div>
-            <div class="loading-text">${text}</div>
+            <div class="loading-text">${escapeHtml(text)}</div>
         `;
         document.body.appendChild(overlay);
     }
@@ -1726,7 +1796,7 @@ async function analyzeTrade() {
         
         renderLLMResult(resultDiv, result);
     } catch (error) {
-        resultDiv.innerHTML = `<div class="error-text">分析失败: ${error.message}</div>`;
+        resultDiv.innerHTML = `<div class="error-text">分析失败: ${escapeHtml(error.message)}</div>`;
         console.error('分析失败:', error);
     } finally {
         setLLMLoading(false);
@@ -1751,7 +1821,7 @@ async function analyzePositions() {
         
         renderLLMResult(resultDiv, result);
     } catch (error) {
-        resultDiv.innerHTML = `<div class="error-text">分析失败: ${error.message}</div>`;
+        resultDiv.innerHTML = `<div class="error-text">分析失败: ${escapeHtml(error.message)}</div>`;
         console.error('分析失败:', error);
     } finally {
         setLLMLoading(false);
@@ -1785,7 +1855,7 @@ async function analyzeMarket() {
         
         renderLLMResult(resultDiv, result);
     } catch (error) {
-        resultDiv.innerHTML = `<div class="error-text">分析失败: ${error.message}</div>`;
+        resultDiv.innerHTML = `<div class="error-text">分析失败: ${escapeHtml(error.message)}</div>`;
         console.error('分析失败:', error);
     } finally {
         setLLMLoading(false);
@@ -1849,7 +1919,7 @@ async function analyzeOrders() {
         
         renderLLMResult(resultDiv, result);
     } catch (error) {
-        resultDiv.innerHTML = `<div class="error-text">分析失败: ${error.message}</div>`;
+        resultDiv.innerHTML = `<div class="error-text">分析失败: ${escapeHtml(error.message)}</div>`;
         console.error('分析失败:', error);
     } finally {
         setLLMLoading(false);
@@ -1873,26 +1943,34 @@ async function getLLMHistory() {
         }
         
         if (result.analyses && result.analyses.length > 0) {
-            historyDiv.innerHTML = result.analyses.map(analysis => `
+            historyDiv.innerHTML = result.analyses.map(analysis => {
+                const analysisId = escapeHtml(analysis.id);
+                return `
                 <div class="llm-history-item">
                     <div class="llm-history-header">
-                        <span class="llm-history-type">${formatAnalysisType(analysis.analysis_type)}</span>
+                        <span class="llm-history-type">${escapeHtml(formatAnalysisType(analysis.analysis_type))}</span>
                         <span class="llm-history-time">${formatTime(analysis.created_at)}</span>
                     </div>
-                    <div class="llm-history-summary">${analysis.summary || '暂无摘要'}</div>
-                    <div class="llm-history-toggle" onclick="toggleLLMDetail(${analysis.id})">
+                    <div class="llm-history-summary">${analysis.summary ? escapeHtml(analysis.summary) : '暂无摘要'}</div>
+                    <div class="llm-history-toggle" data-llm-toggle="detail" data-analysis-id="${analysisId}">
                         查看详情
                     </div>
-                    <div id="llm-detail-${analysis.id}" class="llm-history-detail hidden">
+                    <div id="llm-detail-${analysisId}" class="llm-history-detail hidden">
                         <pre>${escapeHtml(analysis.analysis)}</pre>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
+            historyDiv.querySelectorAll('[data-llm-toggle="detail"]').forEach(el => {
+                el.addEventListener('click', () => {
+                    toggleLLMDetail(el.dataset.analysisId || '');
+                });
+            });
         } else {
             historyDiv.innerHTML = '<div class="empty-text">暂无历史记录</div>';
         }
     } catch (error) {
-        historyDiv.innerHTML = `<div class="error-text">获取失败: ${error.message}</div>`;
+        historyDiv.innerHTML = `<div class="error-text">获取失败: ${escapeHtml(error.message)}</div>`;
         console.error('获取历史记录失败:', error);
     } finally {
         setLLMLoading(false);
@@ -1922,9 +2000,9 @@ function renderLLMResult(container, result) {
     if (result.summary) {
         container.innerHTML = `
             <div class="llm-result">
-                <div class="llm-result-summary">${result.summary}</div>
+                <div class="llm-result-summary">${escapeHtml(result.summary)}</div>
                 ${result.analysis ? `<div class="llm-result-detail"><pre>${escapeHtml(result.analysis)}</pre></div>` : ''}
-                ${result.recommendation ? `<div class="llm-result-recommendation">建议: ${result.recommendation}</div>` : ''}
+                ${result.recommendation ? `<div class="llm-result-recommendation">建议: ${escapeHtml(result.recommendation)}</div>` : ''}
             </div>
         `;
     } else {
@@ -1958,9 +2036,9 @@ function setLLMLoading(loading) {
 
 // HTML 转义
 function escapeHtml(text) {
-    if (!text) return '';
+    if (text === null || text === undefined) return '';
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = String(text);
     return div.innerHTML;
 }
 
@@ -2038,26 +2116,35 @@ async function refreshTimedOrders() {
         const result = await response.json();
         
         if (result.orders && result.orders.length > 0) {
-            container.innerHTML = result.orders.map(order => `
+            container.innerHTML = result.orders.map(order => {
+                const statusClass = escapeHtml(String(order.status || '').toLowerCase());
+                const orderId = escapeHtml(order.id);
+                return `
                 <div class="order-item">
                     <div class="order-header">
-                        <span class="order-symbol">${order.symbol}</span>
-                        <span class="badge ${order.status.toLowerCase()}">${order.status}</span>
+                        <span class="order-symbol">${escapeHtml(order.symbol)}</span>
+                        <span class="badge ${statusClass}">${escapeHtml(order.status)}</span>
                     </div>
                     <div class="order-details">
-                        <div>方向: <span class="${order.side}">${order.side}</span></div>
+                        <div>方向: <span class="${escapeHtml(order.side)}">${escapeHtml(order.side)}</span></div>
                         <div>数量: ${formatNumber(order.size)}</div>
                         <div>执行时间: ${formatTime(order.execute_at)}</div>
                         ${order.executed_at ? `<div>执行时间: ${formatTime(order.executed_at)}</div>` : ''}
                         ${order.execute_price ? `<div>执行价格: ${formatNumber(order.execute_price)}</div>` : ''}
                     </div>
                     <div class="order-actions">
-                        ${order.status === 'pending' ? 
-                            `<button class="btn btn-small btn-danger" onclick="cancelTimedOrder('${order.id}')">取消</button>` : 
+                        ${order.status === 'pending' ?
+                            `<button class="btn btn-small btn-danger" data-timed-action="cancel" data-order-id="${orderId}">取消</button>` :
                             ''}
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
+            container.querySelectorAll('[data-timed-action="cancel"]').forEach(button => {
+                button.addEventListener('click', () => {
+                    cancelTimedOrder(button.dataset.orderId || '');
+                });
+            });
         } else {
             container.innerHTML = '<div class="empty-text">暂无限时单</div>';
         }
@@ -2996,33 +3083,39 @@ async function refreshConditionalOrders() {
 
         if (result.orders && result.orders.length > 0) {
             container.innerHTML = result.orders.map(order => {
-                const conditionDesc = formatCondition(order.condition, order.type);
-                const statusBadge = order.status.toLowerCase();
+                const conditionDesc = escapeHtml(formatCondition(order.condition, order.type));
+                const statusBadge = escapeHtml(String(order.status || '').toLowerCase());
+                const orderId = escapeHtml(order.id);
                 return `
                 <div class="order-item">
                     <div class="order-header">
-                        <span class="order-symbol">${order.symbol}</span>
-                        <span class="badge ${statusBadge}">${order.status}</span>
+                        <span class="order-symbol">${escapeHtml(order.symbol)}</span>
+                        <span class="badge ${statusBadge}">${escapeHtml(order.status)}</span>
                     </div>
                     <div class="order-details">
-                        <div>方向: <span class="${order.side}">${order.side}</span></div>
+                        <div>方向: <span class="${escapeHtml(order.side)}">${escapeHtml(order.side)}</span></div>
                         <div>数量: ${formatNumber(order.size)}</div>
-                        <div>类型: ${order.order_type}</div>
+                        <div>类型: ${escapeHtml(order.order_type)}</div>
                         <div>条件: ${conditionDesc}</div>
                         <div>创建时间: ${formatTime(order.created_at)}</div>
                         ${order.trigger_price ? `<div>触发价格: ${formatNumber(order.trigger_price)}</div>` : ''}
                         ${order.triggered_at ? `<div>触发时间: ${formatTime(order.triggered_at)}</div>` : ''}
-                        ${order.order_id ? `<div>关联订单: ${order.order_id}</div>` : ''}
-                        ${order.reason ? `<div>原因: ${order.reason}</div>` : ''}
+                        ${order.order_id ? `<div>关联订单: ${escapeHtml(order.order_id)}</div>` : ''}
+                        ${order.reason ? `<div>原因: ${escapeHtml(order.reason)}</div>` : ''}
                     </div>
                     <div class="order-actions">
                         ${order.status === 'pending' ?
-                            `<button class="btn btn-small btn-danger" onclick="cancelConditionalOrder('${order.id}')">取消</button>` :
+                            `<button class="btn btn-small btn-danger" data-cond-action="cancel" data-order-id="${orderId}">取消</button>` :
                             ''}
                     </div>
                 </div>
                 `;
             }).join('');
+            container.querySelectorAll('[data-cond-action="cancel"]').forEach(button => {
+                button.addEventListener('click', () => {
+                    cancelConditionalOrder(button.dataset.orderId || '');
+                });
+            });
         } else {
             container.innerHTML = '<div class="empty-text">暂无条件单</div>';
         }

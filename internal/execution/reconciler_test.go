@@ -80,7 +80,7 @@ func newTestRiskEngine() *risk.Engine {
 		StopLossPercent: 0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay: 100,
-	})
+	}, risk.WithClock(execTestClock()))
 }
 
 func TestOrderReconcilerStartStop(t *testing.T) {

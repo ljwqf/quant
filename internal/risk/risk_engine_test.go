@@ -9,7 +9,7 @@ import (
 )
 
 func TestCheckRiskRejectsNilSignal(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	err := engine.CheckRisk(nil)
 
@@ -17,7 +17,7 @@ func TestCheckRiskRejectsNilSignal(t *testing.T) {
 }
 
 func TestCheckRiskAllowsExitWhenDailyLimitsExceeded(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.dailyLoss = 9999
 	engine.dailyTrades = 9999
 
@@ -27,7 +27,7 @@ func TestCheckRiskAllowsExitWhenDailyLimitsExceeded(t *testing.T) {
 }
 
 func TestCheckRiskRejectsEntryAbovePositionLimit(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.UpdatePosition(&types.Position{Symbol: "BTC-USDT", Side: types.OrderSideBuy, Size: 8, MarkPrice: 10})
 
 	err := engine.CheckRisk(&types.Signal{Type: types.SignalTypeBuy, Symbol: "ETH-USDT", Price: 30, Quantity: 1})
@@ -36,7 +36,7 @@ func TestCheckRiskRejectsEntryAbovePositionLimit(t *testing.T) {
 }
 
 func TestGetAvailableRiskBudgetClampsToRemainingLoss(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.dailyLoss = 40
 
 	budget := engine.GetAvailableRiskBudget(1000)
@@ -45,7 +45,7 @@ func TestGetAvailableRiskBudgetClampsToRemainingLoss(t *testing.T) {
 }
 
 func TestEngineStopIsIdempotent(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	assert.NotPanics(t, func() {
 		engine.Stop()

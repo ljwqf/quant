@@ -12,7 +12,7 @@ import (
 
 func TestNewEngine(t *testing.T) {
 	cfg := testRiskConfig()
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 
 	assert.NotNil(t, engine)
 	assert.Equal(t, cfg, engine.config)
@@ -21,7 +21,7 @@ func TestNewEngine(t *testing.T) {
 }
 
 func TestCheckRiskAllowsValidSignal(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	signal := &types.Signal{
 		Type:     types.SignalTypeBuy,
@@ -37,7 +37,7 @@ func TestCheckRiskAllowsValidSignal(t *testing.T) {
 func TestCheckRiskRejectsWhenDailyLossExceeded(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxDailyLoss = 100
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 	engine.UpdatePnL("BTC-USDT", -150)
 
 	signal := &types.Signal{
@@ -54,7 +54,7 @@ func TestCheckRiskRejectsWhenDailyLossExceeded(t *testing.T) {
 func TestCheckRiskRejectsWhenMaxTradesExceeded(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxTradesPerDay = 5
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 	for i := 0; i < 6; i++ {
 		engine.IncrementTrade()
 	}
@@ -71,7 +71,7 @@ func TestCheckRiskRejectsWhenMaxTradesExceeded(t *testing.T) {
 }
 
 func TestCheckRiskAllowsSellSignal(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	signal := &types.Signal{
 		Type:     types.SignalTypeSell,
@@ -85,7 +85,7 @@ func TestCheckRiskAllowsSellSignal(t *testing.T) {
 }
 
 func TestUpdatePosition(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	position := &types.Position{
 		Symbol:     "BTC-USDT",
@@ -99,7 +99,7 @@ func TestUpdatePosition(t *testing.T) {
 }
 
 func TestUpdatePositionReplacesExisting(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	engine.UpdatePosition(&types.Position{
 		Symbol:     "BTC-USDT",
@@ -121,7 +121,7 @@ func TestUpdatePositionReplacesExisting(t *testing.T) {
 }
 
 func TestRecordTrade(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	initialTrades := engine.GetDailyTrades()
 
 	engine.IncrementTrade()
@@ -132,7 +132,7 @@ func TestRecordTrade(t *testing.T) {
 func TestRecordTradeUpdatesDailyLoss(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxDailyLoss = 1000
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 
 	engine.UpdatePnL("BTC-USDT", -500)
 
@@ -140,7 +140,7 @@ func TestRecordTradeUpdatesDailyLoss(t *testing.T) {
 }
 
 func TestRecordTradeUpdatesDailyProfit(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	engine.UpdatePnL("BTC-USDT", 500)
 
@@ -150,7 +150,7 @@ func TestRecordTradeUpdatesDailyProfit(t *testing.T) {
 func TestGetAvailableRiskBudget(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxDailyLoss = 100
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 
 	budget := engine.GetAvailableRiskBudget(1000)
 	assert.Equal(t, 100.0, budget)
@@ -159,7 +159,7 @@ func TestGetAvailableRiskBudget(t *testing.T) {
 func TestGetAvailableRiskBudgetWithExistingLoss(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxDailyLoss = 100
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 	engine.UpdatePnL("BTC-USDT", -30)
 
 	budget := engine.GetAvailableRiskBudget(1000)
@@ -169,7 +169,7 @@ func TestGetAvailableRiskBudgetWithExistingLoss(t *testing.T) {
 func TestGetAvailableRiskBudgetZeroWhenExceeded(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxDailyLoss = 100
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 	engine.UpdatePnL("BTC-USDT", -100)
 
 	budget := engine.GetAvailableRiskBudget(1000)
@@ -177,7 +177,7 @@ func TestGetAvailableRiskBudgetZeroWhenExceeded(t *testing.T) {
 }
 
 func TestSetStrategyWeights(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	weights := map[string]float64{
 		"Strategy1": 0.5,
@@ -194,7 +194,7 @@ func TestSetStrategyWeights(t *testing.T) {
 }
 
 func TestGetStrategyWeightsReturnsCopy(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	engine.SetStrategyWeights(map[string]float64{"Strategy1": 0.5})
 	result := engine.GetStrategyWeights()
@@ -204,7 +204,7 @@ func TestGetStrategyWeightsReturnsCopy(t *testing.T) {
 }
 
 func TestGetMetrics(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.UpdatePnL("BTC-USDT", -50)
 	engine.IncrementTrade()
 
@@ -214,7 +214,7 @@ func TestGetMetrics(t *testing.T) {
 }
 
 func TestResetDailyStats(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.UpdatePnL("BTC-USDT", -100)
 	engine.IncrementTrade()
 
@@ -225,7 +225,7 @@ func TestResetDailyStats(t *testing.T) {
 }
 
 func TestCheckTimeFuseAllowsNormalTime(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.nowFunc = func() time.Time {
 		return time.Date(2026, 3, 26, 10, 30, 0, 0, time.Local)
 	}
@@ -236,7 +236,7 @@ func TestCheckTimeFuseAllowsNormalTime(t *testing.T) {
 }
 
 func TestCheckTimeFuseBlocksSettlementWindow(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.nowFunc = func() time.Time {
 		return time.Date(2026, 3, 26, 8, 0, 0, 0, time.Local)
 	}
@@ -246,7 +246,7 @@ func TestCheckTimeFuseBlocksSettlementWindow(t *testing.T) {
 }
 
 func TestCheckRiskReturnsMarketClosedDuringFuseWindow(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 	engine.nowFunc = func() time.Time {
 		return time.Date(2026, 3, 26, 16, 0, 0, 0, time.Local)
 	}
@@ -288,7 +288,7 @@ func TestIsTimeInWindow(t *testing.T) {
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
@@ -314,7 +314,7 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestEngineWithNilConfig(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := NewEngine(nil, testClock())
 	assert.NotNil(t, engine)
 }
 
@@ -325,7 +325,7 @@ func TestEngineWithDisabledRisk(t *testing.T) {
 		MaxTradesPerDay: 10,
 		MaxPositionSize: 100,
 	}
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 
 	signal := &types.Signal{
 		Type:     types.SignalTypeBuy,
@@ -339,7 +339,7 @@ func TestEngineWithDisabledRisk(t *testing.T) {
 }
 
 func TestGetPositionCount(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	assert.Equal(t, 0, len(engine.GetPositions()))
 
@@ -351,7 +351,7 @@ func TestGetPositionCount(t *testing.T) {
 }
 
 func TestGetTotalPositionValue(t *testing.T) {
-	engine := NewEngine(testRiskConfig())
+	engine := NewEngine(testRiskConfig(), testClock())
 
 	engine.UpdatePosition(&types.Position{
 		Symbol:    "BTC-USDT",
@@ -375,7 +375,7 @@ func TestGetTotalPositionValue(t *testing.T) {
 func TestCheckDrawdown(t *testing.T) {
 	cfg := testRiskConfig()
 	cfg.MaxDrawdown = 0.1
-	engine := NewEngine(cfg)
+	engine := NewEngine(cfg, testClock())
 
 	assert.False(t, engine.IsCircuitBreakerTriggered())
 }

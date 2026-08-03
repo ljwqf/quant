@@ -38,6 +38,13 @@ type Engine struct {
 // EngineOption 引擎配置选项
 type EngineOption func(*Engine)
 
+// WithClock 覆盖引擎墙钟，用于测试/回注固定时间，避免结算时段熔断等时间窗口依赖真实时间。
+func WithClock(now func() time.Time) EngineOption {
+	return func(e *Engine) {
+		e.nowFunc = now
+	}
+}
+
 // WithLiquidityChecker 设置流动性检查器
 func WithLiquidityChecker(checker LiquidityChecker, maxSlippage float64, depth int) EngineOption {
 	return func(e *Engine) {
@@ -75,6 +82,9 @@ func NewEngine(cfg *config.RiskConfig, opts ...EngineOption) *Engine {
 	for _, opt := range opts {
 		opt(e)
 	}
+
+	// 使用注入后的时钟，保证测试时钟下每日重置基准一致
+	e.lastResetTime = e.nowFunc()
 
 	return e
 }

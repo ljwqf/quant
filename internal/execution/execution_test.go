@@ -68,7 +68,7 @@ func TestExecuteUsesCalculatedQuantityForRiskCheck(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	engine := NewEngine(exchange, riskEngine, strategy.NewEngine())
 
 	result, err := engine.Execute(&types.Signal{
@@ -101,7 +101,7 @@ func TestCloseAllPositionsUsesOppositeSideForShortPosition(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	err := engine.CloseAllPositions()
 
@@ -120,7 +120,7 @@ func TestPlaceOrderRejectsInvalidManualOrder(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	result, err := engine.PlaceOrder(&types.Order{Symbol: "BTC-USDT", Type: types.OrderTypeLimit, Quantity: 1})
 
@@ -138,7 +138,7 @@ func TestPlaceOrderTracksManualOrder(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	result, err := engine.PlaceOrder(&types.Order{Symbol: "BTC-USDT", Side: types.OrderSideBuy, Type: types.OrderTypeMarket, Quantity: 1})
 
@@ -168,7 +168,7 @@ func TestClosePositionUsesOppositeSideForShortPosition(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	result, err := engine.ClosePosition("BTC-USDT", 0)
 
@@ -191,7 +191,7 @@ func TestClosePositionReturnsNilWhenPositionMissing(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	result, err := engine.ClosePosition("BTC-USDT", 0)
 
@@ -209,7 +209,7 @@ func TestHandleOrderFilledNotifiesStrategyOnExit(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	recorder := &recordingStrategy{}
 	require.NoError(t, strategyEngine.AddStrategy("NeedleStrategy", recorder, map[string]interface{}{}))
@@ -254,7 +254,7 @@ func TestHandleOrderFilledUpdatesDailyLossOnLosingExit(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	recorder := &recordingStrategy{}
 	require.NoError(t, strategyEngine.AddStrategy("NeedleStrategy", recorder, map[string]interface{}{}))
@@ -305,7 +305,7 @@ func TestExecuteEntrySignalRejectsInsufficientOrderBookDepth(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	order, result, err := engine.executeEntrySignal(&types.Signal{
 		Strategy: "NeedleStrategy",
@@ -339,7 +339,7 @@ func TestExecuteEntrySignalStoresEstimatedSlippageMetadata(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	}), strategy.NewEngine())
+	}, risk.WithClock(execTestClock())), strategy.NewEngine())
 
 	order, result, err := engine.executeEntrySignal(&types.Signal{
 		Strategy: "NeedleStrategy",
@@ -371,7 +371,7 @@ func TestHandleOrderFilledRebalancesAllocatorAfterExitPnL(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	recorder := &recordingStrategy{}
 	require.NoError(t, strategyEngine.AddStrategy("loser", recorder, map[string]interface{}{}))
@@ -430,7 +430,7 @@ func TestStateSnapshotRoundTrip(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	engine := NewEngine(&stubExchange{}, riskEngine, strategyEngine)
 	engine.SetStateStore(store)
@@ -472,7 +472,7 @@ func TestStateSnapshotRoundTrip(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	restoredEngine := NewEngine(&stubExchange{}, restoredRiskEngine, strategy.NewEngine())
 	restoredEngine.SetStateStore(store)
 
@@ -514,7 +514,7 @@ func TestReconcileWithExchangeSyncsLivePositions(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, risk.WithClock(execTestClock()))
 	engine := NewEngine(exchange, riskEngine, strategy.NewEngine())
 
 	riskEngine.UpdatePosition(&types.Position{

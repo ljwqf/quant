@@ -53,7 +53,7 @@ func TestRiskEngineAdditionalPaths(t *testing.T) {
 		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
 		MaxTradesPerDay:   100,
-	})
+	}, testClock())
 
 	engine.UpdatePosition(&types.Position{Symbol: "ETH-USDT", Side: types.OrderSideBuy, EntryPrice: 100, MarkPrice: 101, Size: 2})
 	assert.NotNil(t, engine.GetPosition("ETH-USDT"))

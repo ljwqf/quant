@@ -313,7 +313,7 @@ func (s *flowExchangeStub) applyFillDelta(order *types.Order, quantity float64) 
 
 func TestExecutionEngineCompletesEntryAndExitLifecycleWithStrategyEngine(t *testing.T) {
 	exchange := newFlowExchangeStub()
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	flow := &flowStrategy{}
 	require.NoError(t, strategyEngine.AddStrategy("FlowStrategy", flow, map[string]interface{}{}))
@@ -351,7 +351,7 @@ func TestExecutionEngineCompletesEntryAndExitLifecycleWithStrategyEngine(t *test
 
 func TestRebalancePlacesActualReductionOrderForOverallocatedStrategy(t *testing.T) {
 	exchange := newFlowExchangeStub()
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	recorder := &recordingStrategy{}
 	require.NoError(t, strategyEngine.AddStrategy("loser", recorder, map[string]interface{}{}))
@@ -382,7 +382,7 @@ func TestRebalancePlacesActualReductionOrderForOverallocatedStrategy(t *testing.
 
 func TestRebalanceEntryRequiresStrategyApproval(t *testing.T) {
 	exchange := newFlowExchangeStub()
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	winner := &flowStrategy{}
 	loser := &flowStrategy{rejectReason: "insufficient_signal_quality"}
@@ -440,7 +440,7 @@ func TestRebalanceEntryExecutesApprovedMultiLegPlan(t *testing.T) {
 		Bids:   []types.OrderBookLevel{{Price: 100.5, Size: 20}, {Price: 100, Size: 20}},
 	}
 	exchange.tickerPrices["BTC-USDT-SWAP"] = 100.5
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -493,7 +493,7 @@ func TestRebalanceEntryRollsBackEarlierLegWhenLaterLegPlacementFails(t *testing.
 	exchange.tickerPrices["BTC-USDT-SWAP"] = 100.5
 	exchange.failOnPlace = map[string]error{"BTC-USDT-SWAP": fmt.Errorf("perp unavailable")}
 
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -532,7 +532,7 @@ func TestRebalanceEntryPlacesCompensationOrderWhenCancelLosesRaceToFill(t *testi
 	exchange.failOnPlace = map[string]error{"BTC-USDT-SWAP": fmt.Errorf("perp unavailable")}
 	exchange.failCancelSymbols = map[string]error{"BTC-USDT": fmt.Errorf("cancel rejected")}
 
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -593,7 +593,7 @@ func TestRebalanceEntryOpensCircuitWhenCompensationOrderFails(t *testing.T) {
 	exchange.failCancelSymbols = map[string]error{"BTC-USDT": fmt.Errorf("cancel rejected")}
 	exchange.failOnPlaceBySide = map[string]error{"BTC-USDT:sell": fmt.Errorf("rollback unavailable")}
 
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -649,7 +649,7 @@ func TestRebalanceCircuitCanBeManuallyReset(t *testing.T) {
 	exchange.failCancelSymbols = map[string]error{"BTC-USDT": fmt.Errorf("cancel rejected")}
 	exchange.failOnPlaceBySide = map[string]error{"BTC-USDT:sell": fmt.Errorf("rollback unavailable")}
 
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -714,7 +714,7 @@ func TestRebalanceCircuitAutoResetsAfterCooldown(t *testing.T) {
 	exchange.failCancelSymbols = map[string]error{"BTC-USDT": fmt.Errorf("cancel rejected")}
 	exchange.failOnPlaceBySide = map[string]error{"BTC-USDT:sell": fmt.Errorf("rollback unavailable")}
 
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -775,7 +775,7 @@ func TestRebalanceEntryRecoversMultiLegPartialFill(t *testing.T) {
 	}
 	exchange.tickerPrices["BTC-USDT-SWAP"] = 100.5
 
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	delta := strategy.NewDeltaNeutralFundingPro()
 	require.NoError(t, delta.Init(map[string]interface{}{"spot_symbol": "BTC-USDT", "perp_symbol": "BTC-USDT-SWAP"}))
@@ -836,7 +836,7 @@ func TestRebalanceEntryRecoversMultiLegPartialFill(t *testing.T) {
 func TestReconcileWithExchangeRecoversUnfinishedRebalancePlan(t *testing.T) {
 	exchange := newFlowExchangeStub()
 	exchange.tickerPrices["BTC-USDT-SWAP"] = 100.5
-	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100})
+	riskEngine := risk.NewEngine(&config.RiskConfig{Enable: true, MaxPositionSize: 10000, MaxDailyLoss: 1000, MaxDrawdown: 0.2, StopLossPercent: 0.05, TakeProfitPercent: 0.1, MaxTradesPerDay: 100}, risk.WithClock(execTestClock()))
 	strategyEngine := strategy.NewEngine()
 	flow := &flowStrategy{}
 	require.NoError(t, strategyEngine.AddStrategy("DeltaNeutralFunding-Pro", flow, map[string]interface{}{}))
