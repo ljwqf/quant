@@ -34,3 +34,17 @@
 - 2026-07-23 审计闭合记录中"go test ./... 当前仍失败，项目继续冻结"的状态已解除：
   截至 2026-08-04 全量测试稳定通过（含时间窗口内外的双向验证）。
 - 历史审计 P0 中涉及 quant 的其余发现（configs 密钥、app.js 早期行号）核实为误报或已被后续迭代修复。
+
+## 部署与执行状态（2026-08-04 晚）
+
+- 提交：5a392a8（分支 audit-remediation/error-handling，11 文件）；仓库内其他会话改动
+  （okx 客户端、execution.go 格式漂移、logbackup、bayesian_allocator 等）保持未提交原样。
+- 部署前复测：`go test ./...` 全量 16 包通过（0 失败）。
+- 已部署：修复后 app.js 上传至腾讯云 132.232.231.41:/root/quant/web/static/js/app.js。
+  旧文件备份为 app.js.bak-20260804；两端 MD5 一致（1f4d5b67386c9eac1508f13f5342519a）；
+  服务端确认 data-llm-toggle / encodeURIComponent 模式存在、内联 onclick 仅剩 3 处纯字面量。
+  静态文件经 http.FileServer(./web/static) 磁盘读取，无需重编二进制，重启即生效。
+- trader 进程自 2026-05-10 起已优雅关闭（trader.log 末尾"所有组件已优雅关闭"），8765 端口未监听，
+  仪表盘当前离线；XSS 修复随 trader 重启生效。重启=恢复实盘交易，待用户决定，未擅自执行。
+- RackNerd（23.95.165.223:10087）SSH 连接超时、不可达，未能核实该机是否部署 quant；待恢复后补查。
+- 腾讯云无 unimap / unimap-v2 进程、容器或目录。

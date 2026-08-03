@@ -66,3 +66,9 @@ originSessionId: a2aa21b0-966c-4e8e-819a-10242a8c9bf0
 - Docker multi-stage build (implemented but not actively used)
 - Binary runs on port 8765
 - Config: `configs/config.yaml` (in .gitignore)
+
+## Status Observations (2026-08-04)
+
+- Tencent Cloud trader gracefully shut down since 2026-05-10 (trader.log 末尾 "所有组件已优雅关闭"); port 8765 not listening. app.js XSS fix deployed to disk (backup: app.js.bak-20260804); takes effect on restart. Restart = resume live trading, requires explicit user decision.
+- RackNerd 23.95.165.223:10087 SSH connect timeout observed 2026-08-04 — unreachable; server state pending re-check.
+- No unimap / unimap-v2 deployment on Tencent Cloud (no /root dirs, no procs, no containers).
