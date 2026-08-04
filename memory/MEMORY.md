@@ -20,3 +20,6 @@
 - [Session Status 2026-04-23](session_status_2026_04_23.md) — LiquidityHuntEngine concurrent map panic fix + Web panel zero-value date fix, deployed
 - [Session Status 2026-04-26](session_status_2026_04_26.md) — V2 execution pipeline completed (SignalRouter, MakerFirstExecutor, ProfitPool), KlineStream + proxy wiring
 - [Syslog Backup](syslog_backup.md) — Tencent Cloud rsyslog remote log backup config (TCP/UDP port 8514) + Windows UDP sending gotchas
+- [Audit Remediation 2026-07-08](audit_remediation_session_20260708.md) — Codex + Claude Code 双重审核: quant 错误处理修复（server json.MarshalIndent + client WriteFile），全部 build 通过
+- [Audit Closure 2026-07-23](audit_closure_20260723.md) — 全量审计闭合复核：DOM XSS 已修复并通过 JS 语法检查，`go test ./...` 当前仍失败，项目继续冻结
+- [Full-Review Fixes 2026-08-04](audit_full_review_fixes_20260804.md) — Web 面板 XSS 全面修复（22 处）+ 墙钟依赖测试修复（WithClock 注入）；全量测试恢复稳定通过，冻结状态解除
