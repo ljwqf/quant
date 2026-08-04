@@ -96,7 +96,9 @@ func sendFile(server string, filePath string, tlsConfig *tls.Config) error {
 }
 
 func generateTestFiles(count int) {
-	os.MkdirAll("./test_logs", 0755)
+	if err := os.MkdirAll("./test_logs", 0755); err != nil {
+		log.Fatalf("Failed to create test log dir: %v", err)
+	}
 
 	sampleLogs := []string{
 		// Cisco IOS style
@@ -137,7 +139,9 @@ May 10 08:00:09 switch01 sudo: admin : TTY=pts/0 ; PWD=/root ; USER=root ; COMMA
 		content := sampleLogs[i%len(sampleLogs)]
 		// Add timestamps to make it realistic
 		header := fmt.Sprintf("# Log backup test - device_%02d - %s\n", i+1, time.Now().Format("2006-01-02 15:04:05"))
-		os.WriteFile(name, []byte(header+content), 0644)
+		if err := os.WriteFile(name, []byte(header+content), 0644); err != nil {
+			log.Printf("[CLIENT] Failed to write test file %s: %v", name, err)
+		}
 		fmt.Printf("  Generated: %s\n", name)
 	}
 }

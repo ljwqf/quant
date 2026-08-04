@@ -37,8 +37,14 @@ func newRestClient(cfg *config.OKXConfig) *restClient {
 		transport := &http.Transport{}
 
 		if cfg.ProxySkipVerify {
-			logger.Warn("⚠️  TLS证书验证已禁用！仅在可信网络环境中使用！", zap.String("proxy", cfg.ProxyURL))
-			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+			if !cfg.Simulated {
+				logger.Error("🚫 实盘模式下禁止禁用TLS证书验证！请移除 proxy_skip_verify 配置或使用模拟盘",
+					zap.String("proxy", cfg.ProxyURL))
+				// 实盘模式下强制启用TLS验证，忽略 ProxySkipVerify 配置
+			} else {
+				logger.Warn("⚠️  TLS证书验证已禁用！仅限模拟盘/测试环境使用！", zap.String("proxy", cfg.ProxyURL))
+				transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // 仅模拟盘允许
+			}
 		}
 
 		proxyParsed, err := url.Parse(cfg.ProxyURL)
@@ -626,11 +632,11 @@ func (r *restClient) getFundingRate(instId string) (*types.FundingRate, error) {
 		Code string `json:"code"`
 		Msg  string `json:"msg"`
 		Data []struct {
-			InstId         string `json:"instId"`
-			FundingRate    string `json:"fundingRate"`
-			NextFundingRate string `json:"nextFundingRate"`
+			InstId             string `json:"instId"`
+			FundingRate        string `json:"fundingRate"`
+			NextFundingRate    string `json:"nextFundingRate"`
 			NextSettlementTime string `json:"nextFundingTime"`
-			Ts             string `json:"ts"`
+			Ts                 string `json:"ts"`
 		}
 	}
 

@@ -28,20 +28,20 @@ const (
 )
 
 type wsClient struct {
-	config           *config.OKXConfig
-	conn             *websocket.Conn
-	state            int32
-	mutex            sync.Mutex
-	connMutex        sync.Mutex
-	heartbeatTicker  *time.Ticker
-	messageHandler   func([]byte)
-	subscriptions    map[string]bool
-	reconnectChan    chan struct{}
-	ctx              context.Context
-	cancel           context.CancelFunc
-	connCtx          context.Context    // per-connection context, replaced on each connect/reconnect
-	connCancel       context.CancelFunc // cancels connCtx to kill old readLoop/heartbeatLoop
-	connMu           sync.Mutex         // protects connCtx/connCancel access
+	config          *config.OKXConfig
+	conn            *websocket.Conn
+	state           int32
+	mutex           sync.Mutex
+	connMutex       sync.Mutex
+	heartbeatTicker *time.Ticker
+	messageHandler  func([]byte)
+	subscriptions   map[string]bool
+	reconnectChan   chan struct{}
+	ctx             context.Context
+	cancel          context.CancelFunc
+	connCtx         context.Context    // per-connection context, replaced on each connect/reconnect
+	connCancel      context.CancelFunc // cancels connCtx to kill old readLoop/heartbeatLoop
+	connMu          sync.Mutex         // protects connCtx/connCancel access
 }
 
 type wsMessage struct {
@@ -91,8 +91,14 @@ func (w *wsClient) buildDialer() *websocket.Dialer {
 			}
 		}
 		if w.config.ProxySkipVerify {
-			logger.Warn("⚠️  TLS证书验证已禁用！仅在可信网络环境中使用！", zap.String("proxy", w.config.ProxyURL))
-			dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+			if !w.config.Simulated {
+				logger.Error("🚫 实盘模式下禁止禁用TLS证书验证！请移除 proxy_skip_verify 配置或使用模拟盘",
+					zap.String("proxy", w.config.ProxyURL))
+				// 实盘模式下强制启用TLS验证，忽略 ProxySkipVerify 配置
+			} else {
+				logger.Warn("⚠️  TLS证书验证已禁用！仅限模拟盘/测试环境使用！", zap.String("proxy", w.config.ProxyURL))
+				dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // 仅模拟盘允许
+			}
 		}
 	}
 

@@ -1,8 +1,10 @@
 package strategy
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"math"
-	"math/rand"
+	mathrand "math/rand/v2"
 	"sync"
 	"time"
 
@@ -61,7 +63,7 @@ type OnlineBayesianAllocator struct {
 	dailyLoss       float64
 	dailyLossReset  time.Time
 	metricsMutex    sync.Mutex
-	rand            *rand.Rand
+	rand            *mathrand.Rand
 	randMutex       sync.Mutex
 }
 
@@ -71,8 +73,19 @@ func NewOnlineBayesianAllocator() *OnlineBayesianAllocator {
 		params:     make(map[string]interface{}),
 		metrics:    make(map[string]interface{}),
 		strategies: make(map[string]*StrategyPerformance),
-		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
+		rand:       newCryptoRand(),
 	}
+}
+
+// newCryptoRand 创建基于 crypto/rand 种子的伪随机数生成器。
+// 使用 ChaCha8 算法，种子来自操作系统 CSPRNG，确保交易策略采样不可预测。
+func newCryptoRand() *mathrand.Rand {
+	var seed [32]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		// crypto/rand 在正常系统上不会失败；万一失败则用时间戳兜底
+		binary.LittleEndian.PutUint64(seed[:8], uint64(time.Now().UnixNano()))
+	}
+	return mathrand.New(mathrand.NewChaCha8(seed))
 }
 
 func (a *OnlineBayesianAllocator) Name() string {
@@ -219,7 +232,7 @@ func (a *OnlineBayesianAllocator) sampleBeta(alpha, beta float64) float64 {
 }
 
 // sampleGamma 使用 Marsaglia & Tsang 简单算法采样 Gamma(shape, 1) 分布
-func sampleGamma(r *rand.Rand, shape float64) float64 {
+func sampleGamma(r *mathrand.Rand, shape float64) float64 {
 	if shape <= 0 {
 		return 0
 	}

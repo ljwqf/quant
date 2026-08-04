@@ -79,7 +79,9 @@ func main() {
 		MinVersion:   tls.VersionTLS12,
 	}
 
-	os.MkdirAll(*logDir, 0755)
+	if err := os.MkdirAll(*logDir, 0755); err != nil {
+		log.Fatalf("Failed to create log dir: %v", err)
+	}
 
 	stats := &Stats{}
 
@@ -103,12 +105,24 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				data, _ := json.MarshalIndent(stats, "", "  ")
-				os.WriteFile(*statsFile, data, 0644)
+				data, err := json.MarshalIndent(stats, "", "  ")
+				if err != nil {
+					log.Printf("[SERVER] Failed to marshal stats: %v", err)
+					continue
+				}
+				if err := os.WriteFile(*statsFile, data, 0644); err != nil {
+					log.Printf("[SERVER] Failed to write stats: %v", err)
+				}
 			case <-sigCh:
 				log.Println("[SERVER] Shutting down...")
-				data, _ := json.MarshalIndent(stats, "", "  ")
-				os.WriteFile(*statsFile, data, 0644)
+				data, err := json.MarshalIndent(stats, "", "  ")
+				if err != nil {
+					log.Printf("[SERVER] Failed to marshal stats on shutdown: %v", err)
+				} else {
+					if err := os.WriteFile(*statsFile, data, 0644); err != nil {
+						log.Printf("[SERVER] Failed to write stats on shutdown: %v", err)
+					}
+				}
 				os.Exit(0)
 			}
 		}

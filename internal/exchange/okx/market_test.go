@@ -84,7 +84,7 @@ func TestHandleMarketData_Candle(t *testing.T) {
 
 	client.barHandlers = map[string]map[string][]func(*types.Bar){
 		"BTC-USDT": {
-			"1m": []func(*types.Bar){
+			"1M": []func(*types.Bar){
 				func(bar *types.Bar) {
 					receivedBar = bar
 					wg.Done()
