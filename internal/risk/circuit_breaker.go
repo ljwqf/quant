@@ -45,14 +45,14 @@ var DefaultCircuitBreakerConfig = &CircuitBreakerConfig{
 }
 
 type CircuitBreaker struct {
-	config           *CircuitBreakerConfig
-	state            CircuitBreakerState
-	failures         int
-	successes        int
-	lastFailureTime  time.Time
-	concurrentCalls  int
-	mutex            sync.RWMutex
-	onStateChange    func(old, new CircuitBreakerState)
+	config          *CircuitBreakerConfig
+	state           CircuitBreakerState
+	failures        int
+	successes       int
+	lastFailureTime time.Time
+	concurrentCalls int
+	mutex           sync.RWMutex
+	onStateChange   func(old, new CircuitBreakerState)
 }
 
 func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
@@ -345,13 +345,13 @@ func (g *GlobalRiskController) GetMetrics() map[string]interface{} {
 	defer g.mutex.RUnlock()
 
 	return map[string]interface{}{
-		"circuit_breaker": g.circuitBreaker.GetMetrics(),
-		"kill_switch":     g.killSwitch.GetStatus(),
-		"daily_loss":      g.currentLoss,
+		"circuit_breaker":  g.circuitBreaker.GetMetrics(),
+		"kill_switch":      g.killSwitch.GetStatus(),
+		"daily_loss":       g.currentLoss,
 		"daily_loss_limit": g.dailyLossLimit,
-		"trade_count":     g.tradeCount,
-		"max_trades":      g.maxTrades,
-		"can_trade":       g.CanTrade(),
+		"trade_count":      g.tradeCount,
+		"max_trades":       g.maxTrades,
+		"can_trade":        g.CanTrade(),
 	}
 }
 

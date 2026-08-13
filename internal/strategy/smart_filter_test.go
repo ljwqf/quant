@@ -144,4 +144,3 @@ func TestSmartFilterGetMetrics(t *testing.T) {
 	assert.Equal(t, 0.8, metrics["sopr"])
 	assert.Equal(t, 0.9, metrics["mvrv"])
 }
-

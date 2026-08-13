@@ -46,24 +46,24 @@ func (m *mockExchangeForConditional) getPlacedOrders() []*types.Order {
 }
 
 // 其他接口方法
-func (m *mockExchangeForConditional) Connect() error                                          { return nil }
-func (m *mockExchangeForConditional) Disconnect() error                                       { return nil }
-func (m *mockExchangeForConditional) GetAccount() (*types.Account, error)                     { return nil, nil }
-func (m *mockExchangeForConditional) CancelOrder(orderID string) error                        { return nil }
-func (m *mockExchangeForConditional) GetOrder(orderID string) (*types.Order, error)           { return nil, nil }
+func (m *mockExchangeForConditional) Connect() error                                { return nil }
+func (m *mockExchangeForConditional) Disconnect() error                             { return nil }
+func (m *mockExchangeForConditional) GetAccount() (*types.Account, error)           { return nil, nil }
+func (m *mockExchangeForConditional) CancelOrder(orderID string) error              { return nil }
+func (m *mockExchangeForConditional) GetOrder(orderID string) (*types.Order, error) { return nil, nil }
 func (m *mockExchangeForConditional) GetOrders(symbol string, limit int) ([]*types.Order, error) {
 	return nil, nil
 }
-func (m *mockExchangeForConditional) GetPositions() ([]*types.Position, error)                { return nil, nil }
-func (m *mockExchangeForConditional) GetTicker(symbol string) (*types.Tick, error)            { return nil, nil }
+func (m *mockExchangeForConditional) GetPositions() ([]*types.Position, error)     { return nil, nil }
+func (m *mockExchangeForConditional) GetTicker(symbol string) (*types.Tick, error) { return nil, nil }
 func (m *mockExchangeForConditional) GetOrderBook(symbol string, depth int) (*types.OrderBook, error) {
 	return nil, nil
 }
 func (m *mockExchangeForConditional) SubscribeTicker(symbol string, handler func(*types.Tick)) error {
 	return nil
 }
-func (m *mockExchangeForConditional) UnsubscribeTicker(symbol string) error                   { return nil }
-func (m *mockExchangeForConditional) IsConnected() bool                                       { return true }
+func (m *mockExchangeForConditional) UnsubscribeTicker(symbol string) error { return nil }
+func (m *mockExchangeForConditional) IsConnected() bool                     { return true }
 func (m *mockExchangeForConditional) SubscribeBar(symbol string, interval string, handler func(*types.Bar)) error {
 	return nil
 }
@@ -83,7 +83,9 @@ func (m *mockExchangeForConditional) CancelAlgoOrder(algoID, symbol string) erro
 func (m *mockExchangeForConditional) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
 	return nil, nil
 }
-func (m *mockExchangeForConditional) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
+func (m *mockExchangeForConditional) GetFundingRate(instId string) (*types.FundingRate, error) {
+	return nil, nil
+}
 
 func TestConditionalOrderManager_AddStopLoss(t *testing.T) {
 	mockEx := &mockExchangeForConditional{}

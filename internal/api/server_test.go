@@ -751,7 +751,9 @@ func (m *apiManualTradeExchange) CancelAlgoOrder(algoID, symbol string) error { 
 func (m *apiManualTradeExchange) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
 	return nil, nil
 }
-func (m *apiManualTradeExchange) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
+func (m *apiManualTradeExchange) GetFundingRate(instId string) (*types.FundingRate, error) {
+	return nil, nil
+}
 
 func newAPIManualTradeServer(t *testing.T) (*Server, *apiManualTradeExchange) {
 	t.Helper()

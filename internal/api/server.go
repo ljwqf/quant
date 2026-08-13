@@ -524,7 +524,7 @@ func (s *Server) Start() error {
 		Addr:         net.JoinHostPort(s.host, strconv.Itoa(s.port)),
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,  // LLM 分析可能耗时较长
+		WriteTimeout: 5 * time.Minute, // LLM 分析可能耗时较长
 		IdleTimeout:  120 * time.Second,
 	}
 
@@ -2912,8 +2912,8 @@ type backtestTask struct {
 }
 
 var (
-	backtestTasks       = make(map[string]*backtestTask)
-	backtestTasksMutex  sync.RWMutex
+	backtestTasks      = make(map[string]*backtestTask)
+	backtestTasksMutex sync.RWMutex
 )
 
 // cleanupExpiredBacktestTasks 清理已完成超过 1 小时的回测任务

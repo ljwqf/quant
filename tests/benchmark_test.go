@@ -101,7 +101,7 @@ func generateTestBars(count int) []*types.Bar {
 	bars := make([]*types.Bar, count)
 	basePrice := 50000.0
 	ts := time.Now().Add(-time.Duration(count) * time.Minute)
-	
+
 	for i := 0; i < count; i++ {
 		price := basePrice + float64(i%1000-500)
 		bars[i] = &types.Bar{
@@ -115,6 +115,6 @@ func generateTestBars(count int) []*types.Bar {
 			Interval:  "1m",
 		}
 	}
-	
+
 	return bars
 }

@@ -12,10 +12,10 @@ import (
 
 // OKXSource OKX交易所数据源
 type OKXSource struct {
-	name     string
-	client   *okx.Client
-	config   *config.OKXConfig
-	healthy  bool
+	name    string
+	client  *okx.Client
+	config  *config.OKXConfig
+	healthy bool
 }
 
 // NewOKXSource 创建OKX数据源
@@ -63,7 +63,7 @@ func (s *OKXSource) Initialize(cfg map[string]interface{}) error {
 	}
 
 	s.client = okx.NewClient(s.config)
-	
+
 	if err := s.client.Connect(); err != nil {
 		logger.Error("OKX数据源连接失败", zap.Error(err))
 		return err

@@ -17,16 +17,18 @@ type reconcilerStubExchange struct {
 	algoOrders []*types.AlgoOrder
 }
 
-func (s *reconcilerStubExchange) Connect() error                                         { return nil }
-func (s *reconcilerStubExchange) Disconnect() error                                      { return nil }
-func (s *reconcilerStubExchange) GetAccount() (*types.Account, error)                    { return &types.Account{}, nil }
+func (s *reconcilerStubExchange) Connect() error                      { return nil }
+func (s *reconcilerStubExchange) Disconnect() error                   { return nil }
+func (s *reconcilerStubExchange) GetAccount() (*types.Account, error) { return &types.Account{}, nil }
 func (s *reconcilerStubExchange) PlaceOrder(order *types.Order) (*types.OrderResult, error) {
 	return &types.OrderResult{OrderID: order.ID, Status: types.OrderStatusPending}, nil
 }
-func (s *reconcilerStubExchange) CancelOrder(orderID string) error                   { return nil }
-func (s *reconcilerStubExchange) GetOrder(orderID string) (*types.Order, error)      { return nil, nil }
-func (s *reconcilerStubExchange) GetPositions() ([]*types.Position, error)           { return nil, nil }
-func (s *reconcilerStubExchange) SubscribeTicker(symbol string, handler func(*types.Tick)) error { return nil }
+func (s *reconcilerStubExchange) CancelOrder(orderID string) error              { return nil }
+func (s *reconcilerStubExchange) GetOrder(orderID string) (*types.Order, error) { return nil, nil }
+func (s *reconcilerStubExchange) GetPositions() ([]*types.Position, error)      { return nil, nil }
+func (s *reconcilerStubExchange) SubscribeTicker(symbol string, handler func(*types.Tick)) error {
+	return nil
+}
 func (s *reconcilerStubExchange) SubscribeBar(symbol string, interval string, handler func(*types.Bar)) error {
 	return nil
 }
@@ -73,13 +75,13 @@ func (s *reconcilerStubExchange) GetAlgoOrders(symbol string, orderType string) 
 
 func newTestRiskEngine() *risk.Engine {
 	return risk.NewEngine(&config.RiskConfig{
-		Enable:          true,
-		MaxPositionSize: 10000,
-		MaxDailyLoss:    1000,
-		MaxDrawdown:     0.2,
-		StopLossPercent: 0.05,
+		Enable:            true,
+		MaxPositionSize:   10000,
+		MaxDailyLoss:      1000,
+		MaxDrawdown:       0.2,
+		StopLossPercent:   0.05,
 		TakeProfitPercent: 0.1,
-		MaxTradesPerDay: 100,
+		MaxTradesPerDay:   100,
 	}, risk.WithClock(execTestClock()))
 }
 

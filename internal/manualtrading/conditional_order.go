@@ -32,31 +32,31 @@ const (
 )
 
 type ConditionalOrder struct {
-	ID            string                 `json:"id"`
-	Symbol        string                 `json:"symbol"`
-	Side          types.OrderSide        `json:"side"`
-	Size          float64                `json:"size"`
-	Type          ConditionalOrderType   `json:"type"`
-	Condition     map[string]interface{} `json:"condition"`
-	OrderType     types.OrderType        `json:"order_type"`
-	Price         float64                `json:"price,omitempty"`
-	Status        ConditionalOrderStatus `json:"status"`
-	CreatedAt     time.Time              `json:"created_at"`
-	TriggeredAt   *time.Time             `json:"triggered_at,omitempty"`
-	CancelledAt   *time.Time             `json:"cancelled_at,omitempty"`
-	OrderID       string                 `json:"order_id,omitempty"`
-	TriggerPrice  float64                `json:"trigger_price,omitempty"`
-	Reason        string                 `json:"reason,omitempty"`
+	ID           string                 `json:"id"`
+	Symbol       string                 `json:"symbol"`
+	Side         types.OrderSide        `json:"side"`
+	Size         float64                `json:"size"`
+	Type         ConditionalOrderType   `json:"type"`
+	Condition    map[string]interface{} `json:"condition"`
+	OrderType    types.OrderType        `json:"order_type"`
+	Price        float64                `json:"price,omitempty"`
+	Status       ConditionalOrderStatus `json:"status"`
+	CreatedAt    time.Time              `json:"created_at"`
+	TriggeredAt  *time.Time             `json:"triggered_at,omitempty"`
+	CancelledAt  *time.Time             `json:"cancelled_at,omitempty"`
+	OrderID      string                 `json:"order_id,omitempty"`
+	TriggerPrice float64                `json:"trigger_price,omitempty"`
+	Reason       string                 `json:"reason,omitempty"`
 }
 
 type ConditionalOrderManager struct {
-	cfg         *config.ManualTradingConfig
-	db          *storage.Database
-	exchange    exchange.Exchange
-	orders      map[string]*ConditionalOrder
-	mu          sync.RWMutex
-	stopCh      chan struct{}
-	running     bool
+	cfg      *config.ManualTradingConfig
+	db       *storage.Database
+	exchange exchange.Exchange
+	orders   map[string]*ConditionalOrder
+	mu       sync.RWMutex
+	stopCh   chan struct{}
+	running  bool
 }
 
 func NewConditionalOrderManager(cfg *config.ManualTradingConfig, db *storage.Database, exchange exchange.Exchange) *ConditionalOrderManager {

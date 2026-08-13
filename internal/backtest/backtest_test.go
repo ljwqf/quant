@@ -10,9 +10,9 @@ import (
 )
 
 type testBacktestStrategy struct {
-	name       string
-	signals    []*types.Signal
-	callCount  int
+	name      string
+	signals   []*types.Signal
+	callCount int
 }
 
 func (ts *testBacktestStrategy) Name() string {
@@ -38,7 +38,7 @@ func (ts *testBacktestStrategy) GetParameters() map[string]interface{} {
 func generateTestBars(count int) []*types.Bar {
 	bars := make([]*types.Bar, 0, count)
 	baseTime := time.Now().Add(-time.Duration(count) * time.Hour)
-	
+
 	for i := 0; i < count; i++ {
 		bars = append(bars, &types.Bar{
 			Symbol:    "BTC-USDT",
@@ -56,7 +56,7 @@ func generateTestBars(count int) []*types.Bar {
 func TestNewEngine(t *testing.T) {
 	strategy := &testBacktestStrategy{name: "test"}
 	engine := NewEngine(strategy, 10000.0)
-	
+
 	require.NotNil(t, engine)
 	assert.NotNil(t, engine.strategy)
 	assert.NotNil(t, engine.dataManager)
@@ -68,17 +68,17 @@ func TestNewEngine(t *testing.T) {
 func TestEngineAddData(t *testing.T) {
 	strategy := &testBacktestStrategy{name: "test"}
 	engine := NewEngine(strategy, 10000.0)
-	
+
 	bars := generateTestBars(10)
 	err := engine.AddData("BTC-USDT", bars)
-	
+
 	require.NoError(t, err)
 }
 
 func TestEngineRunNoData(t *testing.T) {
 	strategy := &testBacktestStrategy{name: "test"}
 	engine := NewEngine(strategy, 10000.0)
-	
+
 	err := engine.Run()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "没有数据")
@@ -86,16 +86,16 @@ func TestEngineRunNoData(t *testing.T) {
 
 func TestEngineRunWithData(t *testing.T) {
 	signals := []*types.Signal{}
-	
+
 	strategy := &testBacktestStrategy{name: "test", signals: signals}
 	engine := NewEngine(strategy, 10000.0)
-	
+
 	bars := generateTestBars(20)
 	engine.AddData("BTC-USDT", bars)
-	
+
 	err := engine.Run()
 	require.NoError(t, err)
-	
+
 	result := engine.GetResult()
 	assert.NotNil(t, result)
 	assert.Equal(t, 10000.0, result.InitialBalance)
@@ -104,18 +104,18 @@ func TestEngineRunWithData(t *testing.T) {
 func TestDataManager(t *testing.T) {
 	dm := NewDataManager()
 	require.NotNil(t, dm)
-	
+
 	bars := generateTestBars(10)
 	err := dm.AddData("BTC-USDT", bars)
 	require.NoError(t, err)
-	
+
 	symbols := dm.GetSymbols()
 	assert.Contains(t, symbols, "BTC-USDT")
-	
+
 	retrievedBars, err := dm.GetData("BTC-USDT")
 	require.NoError(t, err)
 	assert.Len(t, retrievedBars, 10)
-	
+
 	sortedData, err := dm.GetSortedData()
 	require.NoError(t, err)
 	assert.Len(t, sortedData, 10)
@@ -124,10 +124,10 @@ func TestDataManager(t *testing.T) {
 func TestSimulator(t *testing.T) {
 	sim := NewSimulator(10000.0)
 	require.NotNil(t, sim)
-	
+
 	balance := sim.GetBalance()
 	assert.Equal(t, 10000.0, balance)
-	
+
 	equity := sim.GetEquity()
 	assert.Equal(t, 10000.0, equity)
 }
@@ -143,10 +143,10 @@ func TestReportGenerator(t *testing.T) {
 		StartTime:      time.Now().Add(-24 * time.Hour),
 		EndTime:        time.Now(),
 	}
-	
+
 	rg := NewReportGenerator(result)
 	require.NotNil(t, rg)
-	
+
 	report := rg.Generate("test_strategy")
 	require.NotNil(t, report)
 	assert.Equal(t, 10, report.Metrics.TotalTrades)
@@ -156,15 +156,15 @@ func TestReportGenerator(t *testing.T) {
 func TestMultiStrategyEngine(t *testing.T) {
 	mse := NewMultiStrategyEngine()
 	require.NotNil(t, mse)
-	
+
 	strategy1 := &testBacktestStrategy{name: "test1"}
 	err := mse.AddStrategy("test1", strategy1, 10000.0, 0.5)
 	require.NoError(t, err)
-	
+
 	strategy2 := &testBacktestStrategy{name: "test2"}
 	err = mse.AddStrategy("test2", strategy2, 10000.0, 0.5)
 	require.NoError(t, err)
-	
+
 	bars := generateTestBars(10)
 	err = mse.AddData("BTC-USDT", bars)
 	require.NoError(t, err)

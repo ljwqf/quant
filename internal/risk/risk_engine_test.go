@@ -3,9 +3,9 @@ package risk
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCheckRiskRejectsNilSignal(t *testing.T) {

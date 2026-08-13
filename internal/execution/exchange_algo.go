@@ -45,11 +45,11 @@ func (m *ExchangeAlgoOrderManager) PlaceTPSL(symbol string, side types.OrderSide
 	exitSide := exitSideAlgo(side)
 
 	algoOrder := &types.AlgoOrder{
-		Symbol:   symbol,
-		Side:     exitSide,
-		OrdType:  types.AlgoOrderConditional,
-		Size:     size,
-		TdMode:   m.tdMode,
+		Symbol:  symbol,
+		Side:    exitSide,
+		OrdType: types.AlgoOrderConditional,
+		Size:    size,
+		TdMode:  m.tdMode,
 	}
 
 	if tpPx > 0 {

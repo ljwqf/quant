@@ -44,12 +44,12 @@ func (sm *SecurityManager) LoadEncryptionKeyFromEnv() error {
 	if keyEnv == "" {
 		return errors.New("ENCRYPTION_KEY 环境变量未设置")
 	}
-	
+
 	key, err := base64.StdEncoding.DecodeString(keyEnv)
 	if err != nil {
 		return fmt.Errorf("解析加密密钥失败: %w", err)
 	}
-	
+
 	return sm.SetEncryptionKey(key)
 }
 
@@ -58,22 +58,22 @@ func (sm *SecurityManager) Encrypt(plaintext string) (string, error) {
 	if sm.encryptionKey == nil {
 		return "", errors.New("加密密钥未设置")
 	}
-	
+
 	block, err := aes.NewCipher(sm.encryptionKey)
 	if err != nil {
 		return "", fmt.Errorf("创建加密块失败: %w", err)
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", fmt.Errorf("创建GCM模式失败: %w", err)
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", fmt.Errorf("生成随机数失败: %w", err)
 	}
-	
+
 	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
@@ -83,33 +83,33 @@ func (sm *SecurityManager) Decrypt(ciphertext string) (string, error) {
 	if sm.encryptionKey == nil {
 		return "", errors.New("加密密钥未设置")
 	}
-	
+
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", fmt.Errorf("解码密文失败: %w", err)
 	}
-	
+
 	block, err := aes.NewCipher(sm.encryptionKey)
 	if err != nil {
 		return "", fmt.Errorf("创建加密块失败: %w", err)
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", fmt.Errorf("创建GCM模式失败: %w", err)
 	}
-	
+
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
 		return "", errors.New("密文太短")
 	}
-	
+
 	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
 	if err != nil {
 		return "", fmt.Errorf("解密失败: %w", err)
 	}
-	
+
 	return string(plaintext), nil
 }
 
@@ -118,12 +118,12 @@ func GenerateEncryptionKey(keySize int) ([]byte, error) {
 	if keySize != 16 && keySize != 24 && keySize != 32 {
 		return nil, errors.New("密钥长度必须为16、24或32字节")
 	}
-	
+
 	key := make([]byte, keySize)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("生成随机密钥失败: %w", err)
 	}
-	
+
 	return key, nil
 }
 
@@ -141,13 +141,13 @@ func (sm *SecurityManager) GetSecretFromEnv(envKey string) (string, error) {
 	if value == "" {
 		return "", fmt.Errorf("环境变量 %s 未设置", envKey)
 	}
-	
+
 	if sm.encryptionKey != nil {
 		decrypted, err := sm.Decrypt(value)
 		if err == nil {
 			return decrypted, nil
 		}
 	}
-	
+
 	return value, nil
 }

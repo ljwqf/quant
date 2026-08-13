@@ -32,8 +32,8 @@ func TestGetFloat64(t *testing.T) {
 
 func TestGetInt(t *testing.T) {
 	params := map[string]interface{}{
-		"int_value":    42,
-		"float_value":  42.5,
+		"int_value":   42,
+		"float_value": 42.5,
 	}
 
 	// 测试正常整数值

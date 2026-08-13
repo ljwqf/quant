@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/ljwqf/quant/internal/config"
 	"github.com/ljwqf/quant/internal/execution"
 	"github.com/ljwqf/quant/internal/monitoring"
 	"github.com/ljwqf/quant/internal/storage"
 	"github.com/ljwqf/quant/internal/strategy"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type baseStrategyStub struct{}
@@ -337,12 +337,12 @@ func TestPositionRepoAdapterListAll(t *testing.T) {
 
 // Mock repository for positionRepoAdapter tests
 type mockActivePositionRepo struct {
-	upsertCalls       int
-	deleteCalls       int
+	upsertCalls         int
+	deleteCalls         int
 	listByStrategyCalls int
-	listAllCalls      int
-	positions         []*storage.ActivePosition
-	allPositions      []*storage.ActivePosition
+	listAllCalls        int
+	positions           []*storage.ActivePosition
+	allPositions        []*storage.ActivePosition
 }
 
 func (m *mockActivePositionRepo) Upsert(_ *storage.ActivePosition) error {

@@ -11,15 +11,15 @@ import (
 )
 
 const (
-	DefaultMeanRevRSIPeriod          = 14
-	DefaultMeanRevRSIOverbought      = 70.0
-	DefaultMeanRevRSIOversold        = 30.0
-	DefaultMeanRevBollingerPeriod    = 20
-	DefaultMeanRevBollingerStdDev    = 2.0
-	DefaultMeanRevThreshold = 0.02
-	DefaultMeanRevStopLossPercent    = 0.05
+	DefaultMeanRevRSIPeriod           = 14
+	DefaultMeanRevRSIOverbought       = 70.0
+	DefaultMeanRevRSIOversold         = 30.0
+	DefaultMeanRevBollingerPeriod     = 20
+	DefaultMeanRevBollingerStdDev     = 2.0
+	DefaultMeanRevThreshold           = 0.02
+	DefaultMeanRevStopLossPercent     = 0.05
 	DefaultMeanRevTrailingStopPercent = 0.03
-	DefaultMeanRevSignalCooldown     = 3600
+	DefaultMeanRevSignalCooldown      = 3600
 )
 
 type MeanReversionState int
@@ -31,43 +31,43 @@ const (
 )
 
 type MeanReversionStrategy struct {
-	name           string
-	params         map[string]interface{}
-	metrics        map[string]interface{}
-	state          MeanReversionState
-	rsiPeriod      int
-	rsiOverbought  float64
-	rsiOversold    float64
-	bbPeriod       int
-	bbStdDev       float64
-	threshold      float64
-	stopLossPercent    float64
+	name                string
+	params              map[string]interface{}
+	metrics             map[string]interface{}
+	state               MeanReversionState
+	rsiPeriod           int
+	rsiOverbought       float64
+	rsiOversold         float64
+	bbPeriod            int
+	bbStdDev            float64
+	threshold           float64
+	stopLossPercent     float64
 	trailingStopPercent float64
-	signalCooldown     int64
+	signalCooldown      int64
 
 	// 价格历史
 	prices      []float64
 	pricesMutex sync.RWMutex
 
 	// RSI
-	rsi         float64
-	rsiMutex    sync.RWMutex
+	rsi      float64
+	rsiMutex sync.RWMutex
 
 	// 布林带
-	bbUpper     float64
-	bbMiddle    float64
-	bbLower     float64
-	bbMutex     sync.RWMutex
+	bbUpper  float64
+	bbMiddle float64
+	bbLower  float64
+	bbMutex  sync.RWMutex
 
 	// 持仓状态
-	position    *Position
-	trailingStop float64
+	position       *Position
+	trailingStop   float64
 	lastSignalTime time.Time
-	positionMutex sync.RWMutex
+	positionMutex  sync.RWMutex
 
 	// 指标
-	tradeCount  int
-	totalPnL    float64
+	tradeCount   int
+	totalPnL     float64
 	metricsMutex sync.Mutex
 
 	// SmartFilter
@@ -76,20 +76,20 @@ type MeanReversionStrategy struct {
 
 func NewMeanReversionStrategy() *MeanReversionStrategy {
 	return &MeanReversionStrategy{
-		name:          "MeanReversionStrategy",
-		params:        make(map[string]interface{}),
-		metrics:       make(map[string]interface{}),
-		state:         MeanRevStateNeutral,
-		rsiPeriod:     DefaultMeanRevRSIPeriod,
-		rsiOverbought: DefaultMeanRevRSIOverbought,
-		rsiOversold:   DefaultMeanRevRSIOversold,
-		bbPeriod:      DefaultMeanRevBollingerPeriod,
-		bbStdDev:      DefaultMeanRevBollingerStdDev,
-		threshold:     DefaultMeanRevThreshold,
-		stopLossPercent: DefaultMeanRevStopLossPercent,
+		name:                "MeanReversionStrategy",
+		params:              make(map[string]interface{}),
+		metrics:             make(map[string]interface{}),
+		state:               MeanRevStateNeutral,
+		rsiPeriod:           DefaultMeanRevRSIPeriod,
+		rsiOverbought:       DefaultMeanRevRSIOverbought,
+		rsiOversold:         DefaultMeanRevRSIOversold,
+		bbPeriod:            DefaultMeanRevBollingerPeriod,
+		bbStdDev:            DefaultMeanRevBollingerStdDev,
+		threshold:           DefaultMeanRevThreshold,
+		stopLossPercent:     DefaultMeanRevStopLossPercent,
 		trailingStopPercent: DefaultMeanRevTrailingStopPercent,
-		signalCooldown: DefaultMeanRevSignalCooldown,
-		prices:        make([]float64, 0, 100),
+		signalCooldown:      DefaultMeanRevSignalCooldown,
+		prices:              make([]float64, 0, 100),
 	}
 }
 
@@ -147,7 +147,7 @@ func (s *MeanReversionStrategy) Init(params map[string]interface{}) error {
 func (s *MeanReversionStrategy) OnTick(tick *types.Tick) (*types.Signal, error) {
 	s.pricesMutex.Lock()
 	s.prices = append(s.prices, tick.Price)
-	
+
 	if len(s.prices) > 200 {
 		s.prices = s.prices[len(s.prices)-200:]
 	}
@@ -161,7 +161,7 @@ func (s *MeanReversionStrategy) OnTick(tick *types.Tick) (*types.Signal, error) 
 func (s *MeanReversionStrategy) OnBar(bar *types.Bar) (*types.Signal, error) {
 	s.pricesMutex.Lock()
 	s.prices = append(s.prices, bar.Close)
-	
+
 	if len(s.prices) > 200 {
 		s.prices = s.prices[len(s.prices)-200:]
 	}
@@ -352,11 +352,11 @@ func (s *MeanReversionStrategy) checkEntrySignal(symbol string, price float64) (
 	)
 
 	return &types.Signal{
-		Strategy: s.name,
-		Symbol:   symbol,
-		Type:     signalType,
-		Price:    price,
-		Quantity: 1.0,
+		Strategy:  s.name,
+		Symbol:    symbol,
+		Type:      signalType,
+		Price:     price,
+		Quantity:  1.0,
 		Timestamp: time.Now(),
 		Metadata: map[string]interface{}{
 			"rsi":       rsi,
@@ -456,11 +456,11 @@ func (s *MeanReversionStrategy) checkExitSignal(symbol string, price float64) (*
 		)
 
 		return &types.Signal{
-			Strategy: s.name,
-			Symbol:   symbol,
-			Type:     types.SignalTypeExit,
-			Price:    price,
-			Quantity: position.Size,
+			Strategy:  s.name,
+			Symbol:    symbol,
+			Type:      types.SignalTypeExit,
+			Price:     price,
+			Quantity:  position.Size,
 			Timestamp: time.Now(),
 			Metadata: map[string]interface{}{
 				"reason": exitReason,

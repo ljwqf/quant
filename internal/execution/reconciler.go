@@ -15,19 +15,19 @@ import (
 // OrderReconciler 订单对账服务
 // 定期拉取交易所订单/条件单，与本地状态比对并自动修复不一致
 type OrderReconciler struct {
-	exch         exchange.Exchange
-	riskEngine   *risk.Engine
-	execEngine   *Engine
-	symbols      []string
-	interval     time.Duration
-	stopCh       chan struct{}
-	once         sync.Once
+	exch       exchange.Exchange
+	riskEngine *risk.Engine
+	execEngine *Engine
+	symbols    []string
+	interval   time.Duration
+	stopCh     chan struct{}
+	once       sync.Once
 
 	// 指标
-	totalReconciles   int64
+	totalReconciles    int64
 	discrepanciesFound int64
 	discrepanciesFixed int64
-	metricsMu         sync.Mutex
+	metricsMu          sync.Mutex
 }
 
 // OrderReconcilerConfig 对账服务配置

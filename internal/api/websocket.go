@@ -57,12 +57,12 @@ type WSMessage struct {
 // NewWebSocketHub 创建WebSocket中心
 func NewWebSocketHub(server *Server) *WebSocketHub {
 	return &WebSocketHub{
-		server:        server,
-		clients:       make(map[*websocket.Conn]*WSClient),
-		broadcast:     make(chan []byte, 256),
-		register:      make(chan *websocket.Conn),
-		unregister:    make(chan *websocket.Conn),
-		startedAt:     time.Now(),
+		server:     server,
+		clients:    make(map[*websocket.Conn]*WSClient),
+		broadcast:  make(chan []byte, 256),
+		register:   make(chan *websocket.Conn),
+		unregister: make(chan *websocket.Conn),
+		startedAt:  time.Now(),
 	}
 }
 
@@ -76,8 +76,8 @@ func (h *WebSocketHub) BroadcastStatus() {
 		SystemStatus: "running",
 		ConnectedAt:  h.startedAt,
 		Uptime:       time.Since(h.startedAt),
-		ClientCount:   clientCount,
-		MessageCount:  h.totalMessages,
+		ClientCount:  clientCount,
+		MessageCount: h.totalMessages,
 	}
 	h.BroadcastTo(EventTypeStatus, data)
 }

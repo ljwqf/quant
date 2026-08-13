@@ -195,10 +195,10 @@ func handleConn(conn net.Conn, logDir string, stats *Stats) {
 	log.Printf("[SERVER] Received: %s (%d bytes) from %s", filename, n, clientCN)
 
 	entry := &LogEntry{
-		Source:   clientCN,
-		Filename: filename,
-		Size:     n,
-		Received: time.Now(),
+		Source:    clientCN,
+		Filename:  filename,
+		Size:      n,
+		Received:  time.Now(),
 		LocalPath: dest,
 	}
 	stats.Record(entry)

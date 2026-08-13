@@ -334,8 +334,8 @@ func (e *LiquidityHuntEngine) checkFakeBreakout(tick *types.Tick) (*types.Signal
 					e.state[tick.Symbol] = 0
 
 					// 更新指标
-				totalSignals := getInt(e.metrics, "total_signals", 0)
-				e.metrics["total_signals"] = totalSignals + 1
+					totalSignals := getInt(e.metrics, "total_signals", 0)
+					e.metrics["total_signals"] = totalSignals + 1
 
 					return signal, nil
 				}

@@ -44,8 +44,8 @@ func TestAlertRuleManagerUnregisterCondition(t *testing.T) {
 	mgr := NewAlertRuleManager(am, m)
 
 	mgr.RegisterCondition(&AlertCondition{
-		ID:   "test_unregister",
-		Name: "测试",
+		ID:    "test_unregister",
+		Name:  "测试",
 		Check: func() (bool, string, error) { return false, "", nil },
 	})
 

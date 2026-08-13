@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBetaArbitrageRecognizesNormalizedBenchmarkSymbol(t *testing.T) {
@@ -95,7 +95,7 @@ func TestBetaArbitrageTracksPositionOnlyAfterFillCallback(t *testing.T) {
 func TestBetaArbitragePositionTimeout(t *testing.T) {
 	engine := NewBetaArbitrageEngine()
 	err := engine.Init(map[string]interface{}{
-		"benchmark":       "BTC-USDT",
+		"benchmark":        "BTC-USDT",
 		"max_holding_time": 0, // 0 hours for testing
 	})
 	assert.NoError(t, err)
@@ -175,7 +175,7 @@ func TestBetaArbitrageCalculateCorrelation(t *testing.T) {
 func TestBetaArbitrageParamFunctions(t *testing.T) {
 	engine := NewBetaArbitrageEngine()
 	err := engine.Init(map[string]interface{}{
-		"rsi_period": 14,
+		"rsi_period":    14,
 		"rsi_threshold": 75.0,
 	})
 	assert.NoError(t, err)
@@ -229,7 +229,7 @@ func TestBetaArbitrageCheckFundingRate(t *testing.T) {
 func TestBetaArbitrageGettersAndSetters(t *testing.T) {
 	engine := NewBetaArbitrageEngine()
 	err := engine.Init(map[string]interface{}{
-		"benchmark": "BTC-USDT",
+		"benchmark":  "BTC-USDT",
 		"rsi_period": 14,
 	})
 	assert.NoError(t, err)

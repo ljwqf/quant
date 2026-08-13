@@ -11,14 +11,14 @@ import (
 )
 
 const (
-	DefaultVolATRPeriod          = 14
-	DefaultVolVolumeMAPeriod     = 20
-	DefaultVolBreakoutMultiplier = 1.5
-	DefaultVolMinVolumeRatio     = 1.2
-	DefaultVolMaxHoldingBars     = 10
-	DefaultVolStopLossPercent    = 0.03
+	DefaultVolATRPeriod           = 14
+	DefaultVolVolumeMAPeriod      = 20
+	DefaultVolBreakoutMultiplier  = 1.5
+	DefaultVolMinVolumeRatio      = 1.2
+	DefaultVolMaxHoldingBars      = 10
+	DefaultVolStopLossPercent     = 0.03
 	DefaultVolTrailingStopPercent = 0.02
-	DefaultVolSignalCooldown     = 3600
+	DefaultVolSignalCooldown      = 3600
 )
 
 type VolatilityState int
@@ -30,18 +30,18 @@ const (
 )
 
 type VolatilityBreakoutStrategy struct {
-	name              string
-	params            map[string]interface{}
-	metrics           map[string]interface{}
-	state             VolatilityState
-	atrPeriod         int
-	volumeMAPeriod    int
-	breakoutMultiplier float64
-	minVolumeRatio    float64
-	maxHoldingBars    int
-	stopLossPercent    float64
+	name                string
+	params              map[string]interface{}
+	metrics             map[string]interface{}
+	state               VolatilityState
+	atrPeriod           int
+	volumeMAPeriod      int
+	breakoutMultiplier  float64
+	minVolumeRatio      float64
+	maxHoldingBars      int
+	stopLossPercent     float64
 	trailingStopPercent float64
-	signalCooldown     int64
+	signalCooldown      int64
 
 	// 价格历史
 	prices      []float64
@@ -51,47 +51,47 @@ type VolatilityBreakoutStrategy struct {
 	pricesMutex sync.RWMutex
 
 	// ATR
-	atr         float64
-	atrMutex    sync.RWMutex
+	atr      float64
+	atrMutex sync.RWMutex
 
 	// 成交量MA
 	volumeMA    float64
 	volumeMutex sync.RWMutex
 
 	// 持仓状态
-	position        *Position
-	positionBars    int
-	trailingStop    float64
-	lastSignalTime  time.Time
-	positionMutex   sync.RWMutex
+	position       *Position
+	positionBars   int
+	trailingStop   float64
+	lastSignalTime time.Time
+	positionMutex  sync.RWMutex
 
 	// 指标
-	tradeCount      int
-	totalPnL        float64
-	metricsMutex    sync.Mutex
+	tradeCount   int
+	totalPnL     float64
+	metricsMutex sync.Mutex
 
 	// SmartFilter
-	smartFilter     *SmartFilter
+	smartFilter *SmartFilter
 }
 
 func NewVolatilityBreakoutStrategy() *VolatilityBreakoutStrategy {
 	return &VolatilityBreakoutStrategy{
-		name:               "VolatilityBreakoutStrategy",
-		params:             make(map[string]interface{}),
-		metrics:            make(map[string]interface{}),
-		state:              VolStateNeutral,
-		atrPeriod:          DefaultVolATRPeriod,
-		volumeMAPeriod:     DefaultVolVolumeMAPeriod,
-		breakoutMultiplier: DefaultVolBreakoutMultiplier,
-		minVolumeRatio:     DefaultVolMinVolumeRatio,
-		maxHoldingBars:     DefaultVolMaxHoldingBars,
-		stopLossPercent:    DefaultVolStopLossPercent,
+		name:                "VolatilityBreakoutStrategy",
+		params:              make(map[string]interface{}),
+		metrics:             make(map[string]interface{}),
+		state:               VolStateNeutral,
+		atrPeriod:           DefaultVolATRPeriod,
+		volumeMAPeriod:      DefaultVolVolumeMAPeriod,
+		breakoutMultiplier:  DefaultVolBreakoutMultiplier,
+		minVolumeRatio:      DefaultVolMinVolumeRatio,
+		maxHoldingBars:      DefaultVolMaxHoldingBars,
+		stopLossPercent:     DefaultVolStopLossPercent,
 		trailingStopPercent: DefaultVolTrailingStopPercent,
-		signalCooldown:     DefaultVolSignalCooldown,
-		prices:             make([]float64, 0, 100),
-		highs:              make([]float64, 0, 100),
-		lows:               make([]float64, 0, 100),
-		volumes:            make([]float64, 0, 100),
+		signalCooldown:      DefaultVolSignalCooldown,
+		prices:              make([]float64, 0, 100),
+		highs:               make([]float64, 0, 100),
+		lows:                make([]float64, 0, 100),
+		volumes:             make([]float64, 0, 100),
 	}
 }
 
@@ -332,17 +332,17 @@ func (s *VolatilityBreakoutStrategy) checkEntrySignal(symbol string, close, high
 	)
 
 	return &types.Signal{
-		Strategy: s.name,
-		Symbol:   symbol,
-		Type:     signalType,
-		Price:    close,
-		Quantity: 1.0,
+		Strategy:  s.name,
+		Symbol:    symbol,
+		Type:      signalType,
+		Price:     close,
+		Quantity:  1.0,
 		Timestamp: time.Now(),
 		Metadata: map[string]interface{}{
-			"atr":           atr,
-			"volume_ratio":  volumeRatio,
-			"prev_close":    prevClose,
-			"state":         s.stateToString(),
+			"atr":          atr,
+			"volume_ratio": volumeRatio,
+			"prev_close":   prevClose,
+			"state":        s.stateToString(),
 		},
 	}, nil
 }
@@ -443,11 +443,11 @@ func (s *VolatilityBreakoutStrategy) checkExitSignal(symbol string, close float6
 		)
 
 		return &types.Signal{
-			Strategy: s.name,
-			Symbol:   symbol,
-			Type:     types.SignalTypeExit,
-			Price:    close,
-			Quantity: position.Size,
+			Strategy:  s.name,
+			Symbol:    symbol,
+			Type:      types.SignalTypeExit,
+			Price:     close,
+			Quantity:  position.Size,
 			Timestamp: time.Now(),
 			Metadata: map[string]interface{}{
 				"reason":        exitReason,

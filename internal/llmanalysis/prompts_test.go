@@ -33,12 +33,12 @@ func TestGetTechnicalAnalysisPrompt(t *testing.T) {
 
 func TestGetNewsAnalysisPrompt(t *testing.T) {
 	data := &NewsAnalysisData{
-		Symbol:        "BTC-USDT",
-		NewsTitle:     "Bitcoin Price Surges",
-		NewsContent:   "Bitcoin price has increased by 10% in the last 24 hours.",
-		Source:        "CoinDesk",
-		PublishedAt:   "2024-01-01T12:00:00Z",
-		Importance:    8,
+		Symbol:      "BTC-USDT",
+		NewsTitle:   "Bitcoin Price Surges",
+		NewsContent: "Bitcoin price has increased by 10% in the last 24 hours.",
+		Source:      "CoinDesk",
+		PublishedAt: "2024-01-01T12:00:00Z",
+		Importance:  8,
 	}
 
 	prompt := GetNewsAnalysisPrompt(data)
@@ -51,13 +51,13 @@ func TestGetNewsAnalysisPrompt(t *testing.T) {
 
 func TestGetEconomicAnalysisPrompt(t *testing.T) {
 	data := &EconomicAnalysisData{
-		EventName:     "US Fed Interest Rate Decision",
-		EventDate:     "2024-01-01",
-		Actual:        5.25,
-		Forecast:      5.25,
-		Previous:      5.25,
-		Currency:      "USD",
-		Importance:    10,
+		EventName:  "US Fed Interest Rate Decision",
+		EventDate:  "2024-01-01",
+		Actual:     5.25,
+		Forecast:   5.25,
+		Previous:   5.25,
+		Currency:   "USD",
+		Importance: 10,
 	}
 
 	prompt := GetEconomicAnalysisPrompt(data)
@@ -70,16 +70,16 @@ func TestGetEconomicAnalysisPrompt(t *testing.T) {
 
 func TestGetTradeDecisionPrompt(t *testing.T) {
 	data := &TradeDecisionData{
-		Symbol:           "BTC-USDT",
-		Side:             "buy",
-		EntryPrice:       50000.0,
-		StopLoss:         48000.0,
-		TakeProfit:       55000.0,
-		PositionSize:     0.1,
-		CurrentPrice:     50000.0,
-		TimeFrame:        "1h",
-		RiskRewardRatio:  2.5,
-		MarketCondition:  "bullish",
+		Symbol:          "BTC-USDT",
+		Side:            "buy",
+		EntryPrice:      50000.0,
+		StopLoss:        48000.0,
+		TakeProfit:      55000.0,
+		PositionSize:    0.1,
+		CurrentPrice:    50000.0,
+		TimeFrame:       "1h",
+		RiskRewardRatio: 2.5,
+		MarketCondition: "bullish",
 	}
 
 	prompt := GetTradeDecisionPrompt(data)

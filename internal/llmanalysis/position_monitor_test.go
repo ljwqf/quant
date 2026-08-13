@@ -33,7 +33,7 @@ func TestPositionMonitorNilAnalyzer(t *testing.T) {
 func TestPositionMonitorConfigDefaults(t *testing.T) {
 	cfg := &PositionMonitorConfig{
 		Enable:        true,
-		CheckInterval: 0, // should default
+		CheckInterval: 0,  // should default
 		RiskThreshold: "", // should default
 	}
 
@@ -51,39 +51,39 @@ func TestCalculatePnLPercent(t *testing.T) {
 		{
 			name: "long profit",
 			pos: &types.Position{
-				Symbol:       "BTC-USDT",
-				Side:         types.OrderSideBuy,
-				Size:         1.0,
-				EntryPrice:   50000,
-				MarkPrice:    51000,
+				Symbol:        "BTC-USDT",
+				Side:          types.OrderSideBuy,
+				Size:          1.0,
+				EntryPrice:    50000,
+				MarkPrice:     51000,
 				UnrealizedPnL: 1000,
-				Leverage:     10,
+				Leverage:      10,
 			},
 			expected: 20.0, // (1000/50000)*100*10 = 20%
 		},
 		{
 			name: "zero entry price",
 			pos: &types.Position{
-				Symbol:       "BTC-USDT",
-				Side:         types.OrderSideBuy,
-				Size:         1.0,
-				EntryPrice:   0,
-				MarkPrice:    50000,
+				Symbol:        "BTC-USDT",
+				Side:          types.OrderSideBuy,
+				Size:          1.0,
+				EntryPrice:    0,
+				MarkPrice:     50000,
 				UnrealizedPnL: 0,
-				Leverage:     10,
+				Leverage:      10,
 			},
 			expected: 0,
 		},
 		{
 			name: "zero size",
 			pos: &types.Position{
-				Symbol:       "BTC-USDT",
-				Side:         types.OrderSideBuy,
-				Size:         0,
-				EntryPrice:   50000,
-				MarkPrice:    50000,
+				Symbol:        "BTC-USDT",
+				Side:          types.OrderSideBuy,
+				Size:          0,
+				EntryPrice:    50000,
+				MarkPrice:     50000,
 				UnrealizedPnL: 0,
-				Leverage:     10,
+				Leverage:      10,
 			},
 			expected: 0,
 		},

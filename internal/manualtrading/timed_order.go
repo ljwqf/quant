@@ -24,28 +24,28 @@ const (
 )
 
 type TimedOrder struct {
-	ID            string           `json:"id"`
-	Symbol        string           `json:"symbol"`
-	Side          types.OrderSide  `json:"side"`
-	Size          float64          `json:"size"`
-	ExecuteAt     time.Time        `json:"execute_at"`
-	Status        TimedOrderStatus `json:"status"`
-	CreatedAt     time.Time        `json:"created_at"`
-	ExecutedAt    *time.Time       `json:"executed_at,omitempty"`
-	CancelledAt   *time.Time       `json:"cancelled_at,omitempty"`
-	OrderID       string           `json:"order_id,omitempty"`
-	ExecutePrice  float64          `json:"execute_price,omitempty"`
-	Reason        string           `json:"reason,omitempty"`
+	ID           string           `json:"id"`
+	Symbol       string           `json:"symbol"`
+	Side         types.OrderSide  `json:"side"`
+	Size         float64          `json:"size"`
+	ExecuteAt    time.Time        `json:"execute_at"`
+	Status       TimedOrderStatus `json:"status"`
+	CreatedAt    time.Time        `json:"created_at"`
+	ExecutedAt   *time.Time       `json:"executed_at,omitempty"`
+	CancelledAt  *time.Time       `json:"cancelled_at,omitempty"`
+	OrderID      string           `json:"order_id,omitempty"`
+	ExecutePrice float64          `json:"execute_price,omitempty"`
+	Reason       string           `json:"reason,omitempty"`
 }
 
 type TimedOrderManager struct {
-	cfg         *config.ManualTradingConfig
-	db          *storage.Database
-	exchange    exchange.Exchange
-	orders      map[string]*TimedOrder
-	mu          sync.RWMutex
-	stopCh      chan struct{}
-	running     bool
+	cfg      *config.ManualTradingConfig
+	db       *storage.Database
+	exchange exchange.Exchange
+	orders   map[string]*TimedOrder
+	mu       sync.RWMutex
+	stopCh   chan struct{}
+	running  bool
 }
 
 func NewTimedOrderManager(cfg *config.ManualTradingConfig, db *storage.Database, exchange exchange.Exchange) *TimedOrderManager {

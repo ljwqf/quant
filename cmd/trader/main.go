@@ -56,14 +56,14 @@ func buildSmartFilterRefreshConfig(cfg *config.Config) *smartFilterRefreshConfig
 	}
 
 	return &smartFilterRefreshConfig{
-		Enabled:              enabled,
-		Source:               source,
-		Interval:             interval,
-		FilePath:             filePath,
-		HTTPURL:              httpURL,
-		HTTPTimeout:          httpTimeout,
-		CryptoQuantAsset:     cryptoQuantAsset,
-		CryptoQuantAPIKey:    cryptoQuantAPIKey,
+		Enabled:           enabled,
+		Source:            source,
+		Interval:          interval,
+		FilePath:          filePath,
+		HTTPURL:           httpURL,
+		HTTPTimeout:       httpTimeout,
+		CryptoQuantAsset:  cryptoQuantAsset,
+		CryptoQuantAPIKey: cryptoQuantAPIKey,
 	}
 }
 
@@ -653,7 +653,7 @@ func main() {
 			"TrendFollowingStrategy",
 			"MeanReversionStrategy",
 			"VolatilityBreakoutStrategy",
-				"TestBuySellStrategy",
+			"TestBuySellStrategy",
 		}),
 		zap.Strings("auxiliary_modules", []string{
 			"SmartFilter",

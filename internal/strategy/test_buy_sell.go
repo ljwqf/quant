@@ -13,17 +13,17 @@ import (
 // TestBuySellStrategy 测试策略：用 1% 资金买入，1 分钟后卖出
 // 用于验证真实交易能力（下单、成交、持仓、平仓全链路）
 type TestBuySellStrategy struct {
-	mu              sync.Mutex
-	initialized     bool
-	symbol          string
-	position        *testPosition
-	firstTickTime   time.Time
-	tickCount       int
-	buyTriggered    bool
-	sellTriggered   bool
-	signalCallback  func(*types.Signal)
-	currentPrice    float64
-	accountBalance  float64
+	mu             sync.Mutex
+	initialized    bool
+	symbol         string
+	position       *testPosition
+	firstTickTime  time.Time
+	tickCount      int
+	buyTriggered   bool
+	sellTriggered  bool
+	signalCallback func(*types.Signal)
+	currentPrice   float64
+	accountBalance float64
 }
 
 type testPosition struct {
@@ -191,11 +191,11 @@ func (s *TestBuySellStrategy) GetMetrics() map[string]interface{} {
 	defer s.mu.Unlock()
 
 	metrics := map[string]interface{}{
-		"initialized":   s.initialized,
-		"tick_count":    s.tickCount,
-		"buy_triggered": s.buyTriggered,
+		"initialized":    s.initialized,
+		"tick_count":     s.tickCount,
+		"buy_triggered":  s.buyTriggered,
 		"sell_triggered": s.sellTriggered,
-		"current_price": s.currentPrice,
+		"current_price":  s.currentPrice,
 	}
 
 	if s.position != nil {
