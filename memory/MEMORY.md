@@ -23,3 +23,4 @@
 - [Audit Remediation 2026-07-08](audit_remediation_session_20260708.md) — Codex + Claude Code 双重审核: quant 错误处理修复（server json.MarshalIndent + client WriteFile），全部 build 通过
 - [Audit Closure 2026-07-23](audit_closure_20260723.md) — 全量审计闭合复核：DOM XSS 已修复并通过 JS 语法检查，`go test ./...` 当前仍失败，项目继续冻结
 - [Full-Review Fixes 2026-08-04](audit_full_review_fixes_20260804.md) — Web 面板 XSS 全面修复（22 处）+ 墙钟依赖测试修复（WithClock 注入）；全量测试恢复稳定通过，冻结状态解除
+- [Audit Commit & Push 2026-08-05](audit_commit_push_20260805.md) — 遗留代码提交（534f768/a21d29e）+ 分支推送 ljwqf/quant（gh 切换）；C 类部署暂缓（quant-v2 为活跃项目）
