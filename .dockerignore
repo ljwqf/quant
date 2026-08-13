@@ -25,8 +25,7 @@ configs/config.yaml
 .DS_Store
 Thumbs.db
 
-# Docs (not needed in container)
-docs/
+# Markdown docs (not needed in container); keep docs/*.go + swagger (required by internal/api)
 spec/
 *.md
 LICENSE
