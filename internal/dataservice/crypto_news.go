@@ -26,12 +26,12 @@ type CryptoNewsConfig struct {
 
 // CryptoNewsClient 加密货币新闻客户端
 type CryptoNewsClient struct {
-	config     *CryptoNewsConfig
-	client     *http.Client
-	lastFetch  time.Time
-	cache      []*storage.NewsEvent
-	cacheTTL   time.Duration
-	mu         sync.RWMutex
+	config    *CryptoNewsConfig
+	client    *http.Client
+	lastFetch time.Time
+	cache     []*storage.NewsEvent
+	cacheTTL  time.Duration
+	mu        sync.RWMutex
 }
 
 // DefaultCryptoNewsConfig 默认新闻配置
@@ -93,22 +93,22 @@ func (c *CryptoNewsClient) FetchNews() ([]*storage.NewsEvent, error) {
 }
 
 type cryptoCompareNewsResponse struct {
-	Response string                        `json:"Response"`
-	Data     []cryptoCompareNewsArticle    `json:"Data"`
+	Response string                     `json:"Response"`
+	Data     []cryptoCompareNewsArticle `json:"Data"`
 }
 
 type cryptoCompareNewsArticle struct {
-	ID            int    `json:"id"`
-	Title         string `json:"title"`
-	Body          string `json:"body"`
-	URL           string `json:"url"`
-	Source        string `json:"source"`
-	PublishedOn   int64  `json:"published_on"`
-	Categories    string `json:"categories"`
-	Upvotes       int    `json:"upvotes"`
-	Downvotes     int    `json:"downvotes"`
-	Images        string `json:"images"`
-	Importance    int    `json:"importance"`
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	URL         string `json:"url"`
+	Source      string `json:"source"`
+	PublishedOn int64  `json:"published_on"`
+	Categories  string `json:"categories"`
+	Upvotes     int    `json:"upvotes"`
+	Downvotes   int    `json:"downvotes"`
+	Images      string `json:"images"`
+	Importance  int    `json:"importance"`
 }
 
 func (c *CryptoNewsClient) fetchFromAPI() ([]*storage.NewsEvent, error) {

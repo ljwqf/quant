@@ -10,10 +10,10 @@ import (
 )
 
 type NotificationManager struct {
-	channels     map[string]NotificationChannel
-	results      []*NotificationResult
-	mu           sync.RWMutex
-	maxResults   int
+	channels   map[string]NotificationChannel
+	results    []*NotificationResult
+	mu         sync.RWMutex
+	maxResults int
 }
 
 type NotificationManagerConfig struct {

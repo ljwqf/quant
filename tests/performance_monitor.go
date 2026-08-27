@@ -7,17 +7,17 @@ import (
 )
 
 type PerformanceMetrics struct {
-	mu               sync.Mutex
-	operationCounts  map[string]int64
-	totalDurations   map[string]time.Duration
-	startTimes       map[string]time.Time
+	mu              sync.Mutex
+	operationCounts map[string]int64
+	totalDurations  map[string]time.Duration
+	startTimes      map[string]time.Time
 }
 
 func NewPerformanceMetrics() *PerformanceMetrics {
 	return &PerformanceMetrics{
 		operationCounts: make(map[string]int64),
 		totalDurations:  make(map[string]time.Duration),
-		startTimes:       make(map[string]time.Time),
+		startTimes:      make(map[string]time.Time),
 	}
 }
 
@@ -30,16 +30,16 @@ func (p *PerformanceMetrics) StartOperation(name string) {
 func (p *PerformanceMetrics) EndOperation(name string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	startTime, exists := p.startTimes[name]
 	if !exists {
 		return
 	}
-	
+
 	duration := time.Since(startTime)
 	p.totalDurations[name] += duration
 	p.operationCounts[name]++
-	
+
 	delete(p.startTimes, name)
 }
 
@@ -53,14 +53,14 @@ func (p *PerformanceMetrics) RecordOperation(name string, duration time.Duration
 func (p *PerformanceMetrics) GetStats(name string) (count int64, avg time.Duration, total time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	count = p.operationCounts[name]
 	total = p.totalDurations[name]
-	
+
 	if count > 0 {
 		avg = total / time.Duration(count)
 	}
-	
+
 	return
 }
 
@@ -71,13 +71,13 @@ func (p *PerformanceMetrics) GetAllStats() map[string]struct {
 } {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	stats := make(map[string]struct {
 		Count int64
 		Avg   time.Duration
 		Total time.Duration
 	})
-	
+
 	for name, count := range p.operationCounts {
 		total := p.totalDurations[name]
 		avg := total / time.Duration(count)
@@ -91,7 +91,7 @@ func (p *PerformanceMetrics) GetAllStats() map[string]struct {
 			Total: total,
 		}
 	}
-	
+
 	return stats
 }
 
@@ -106,15 +106,15 @@ func (p *PerformanceMetrics) Reset() {
 func (p *PerformanceMetrics) PrintReport() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	fmt.Println("\n=== 性能指标报告 ===")
 	fmt.Printf("%-30s %10s %15s %15s\n", "操作名称", "次数", "平均耗时", "总耗时")
 	fmt.Println("---------------------------------------------------------------------")
-	
+
 	for name, count := range p.operationCounts {
 		total := p.totalDurations[name]
 		avg := total / time.Duration(count)
-		fmt.Printf("%-30s %10d %15s %15s\n", 
+		fmt.Printf("%-30s %10d %15s %15s\n",
 			name, count, avg.String(), total.String())
 	}
 	fmt.Println("---------------------------------------------------------------------")
@@ -142,7 +142,7 @@ func NewLatencyHistogram(bounds ...time.Duration) *LatencyHistogram {
 			1 * time.Second,
 		}
 	}
-	
+
 	return &LatencyHistogram{
 		buckets:      make([]int64, len(bounds)+1),
 		bucketBounds: bounds,
@@ -152,35 +152,35 @@ func NewLatencyHistogram(bounds ...time.Duration) *LatencyHistogram {
 func (h *LatencyHistogram) Record(duration time.Duration) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	h.count++
 	h.sum += duration
-	
+
 	for i, bound := range h.bucketBounds {
 		if duration <= bound {
 			h.buckets[i]++
 			return
 		}
 	}
-	
+
 	h.buckets[len(h.buckets)-1]++
 }
 
 func (h *LatencyHistogram) GetStats() (count int64, avg time.Duration, p50 time.Duration, p95 time.Duration, p99 time.Duration) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	if h.count == 0 {
 		return
 	}
-	
+
 	avg = h.sum / time.Duration(h.count)
 	count = h.count
-	
+
 	target50 := count * 50 / 100
 	target95 := count * 95 / 100
 	target99 := count * 99 / 100
-	
+
 	var cumulative int64
 	for i, bound := range h.bucketBounds {
 		cumulative += h.buckets[i]
@@ -197,7 +197,7 @@ func (h *LatencyHistogram) GetStats() (count int64, avg time.Duration, p50 time.
 			break
 		}
 	}
-	
+
 	if p99 == 0 {
 		p99 = h.bucketBounds[len(h.bucketBounds)-1]
 	}
@@ -207,26 +207,26 @@ func (h *LatencyHistogram) GetStats() (count int64, avg time.Duration, p50 time.
 	if p50 == 0 {
 		p50 = h.bucketBounds[len(h.bucketBounds)-1]
 	}
-	
+
 	return
 }
 
 func (h *LatencyHistogram) PrintReport() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	fmt.Println("\n=== 延迟分布报告 ===")
 	fmt.Printf("总次数: %d\n", h.count)
 	if h.count > 0 {
 		fmt.Printf("平均延迟: %s\n", h.sum/time.Duration(h.count))
 	}
-	
+
 	fmt.Println("\n延迟分布:")
 	for i, bound := range h.bucketBounds {
 		fmt.Printf("  <= %-15s: %d\n", bound, h.buckets[i])
 	}
-	fmt.Printf("  > %-15s: %d\n", 
-		h.bucketBounds[len(h.bucketBounds)-1], 
+	fmt.Printf("  > %-15s: %d\n",
+		h.bucketBounds[len(h.bucketBounds)-1],
 		h.buckets[len(h.buckets)-1])
 }
 
@@ -245,7 +245,7 @@ func NewThroughputMonitor(interval time.Duration, windowSize int) *ThroughputMon
 	if interval <= 0 {
 		interval = time.Second
 	}
-	
+
 	return &ThroughputMonitor{
 		interval: interval,
 		windows:  make([]int64, windowSize),
@@ -256,35 +256,35 @@ func NewThroughputMonitor(interval time.Duration, windowSize int) *ThroughputMon
 func (t *ThroughputMonitor) Record(count int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	now := time.Now()
 	elapsed := now.Sub(t.lastTick)
-	
+
 	if elapsed >= t.interval {
 		t.currentIndex = (t.currentIndex + 1) % len(t.windows)
 		t.windows[t.currentIndex] = 0
 		t.lastTick = now
 	}
-	
+
 	t.windows[t.currentIndex] += count
 }
 
 func (t *ThroughputMonitor) GetThroughput() float64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	var total int64
 	for _, w := range t.windows {
 		total += w
 	}
-	
+
 	return float64(total) / (float64(len(t.windows)) * t.interval.Seconds())
 }
 
 func (t *ThroughputMonitor) PrintReport() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	throughput := t.GetThroughput()
 	fmt.Printf("\n=== 吞吐量监控 ===")
 	fmt.Printf("当前吞吐量: %.2f ops/sec\n", throughput)

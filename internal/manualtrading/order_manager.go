@@ -13,10 +13,10 @@ import (
 )
 
 type OrderManager struct {
-	cfg     *config.ManualTradingConfig
-	db      *storage.Database
+	cfg       *config.ManualTradingConfig
+	db        *storage.Database
 	tradeRepo repository.ManualTradeRepository
-	exchange exchange.Exchange
+	exchange  exchange.Exchange
 }
 
 func NewOrderManager(cfg *config.ManualTradingConfig, db *storage.Database, exchange exchange.Exchange) *OrderManager {

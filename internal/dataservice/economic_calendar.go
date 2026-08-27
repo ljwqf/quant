@@ -92,15 +92,15 @@ func (c *EconomicCalendarClient) FetchEvents() ([]*storage.EconomicEvent, error)
 }
 
 type investingComEvent struct {
-	Date    string `json:"Date"`
-	Time    string `json:"Time"`
-	Country string `json:"Country"`
-	Event   string `json:"Event"`
-	Actual  string `json:"Actual"`
-	Forecast string `json:"Forecast"`
-	Previous string `json:"Previous"`
-	Importance int   `json:"Importance"`
-	Currency string `json:"Currency"`
+	Date       string `json:"Date"`
+	Time       string `json:"Time"`
+	Country    string `json:"Country"`
+	Event      string `json:"Event"`
+	Actual     string `json:"Actual"`
+	Forecast   string `json:"Forecast"`
+	Previous   string `json:"Previous"`
+	Importance int    `json:"Importance"`
+	Currency   string `json:"Currency"`
 }
 
 func (c *EconomicCalendarClient) fetchFromAPI() ([]*storage.EconomicEvent, error) {

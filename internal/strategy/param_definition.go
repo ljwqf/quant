@@ -7,10 +7,10 @@ import (
 type ParamType string
 
 const (
-	ParamTypeInt     ParamType = "int"
-	ParamTypeFloat   ParamType = "float"
-	ParamTypeString  ParamType = "string"
-	ParamTypeBool    ParamType = "bool"
+	ParamTypeInt         ParamType = "int"
+	ParamTypeFloat       ParamType = "float"
+	ParamTypeString      ParamType = "string"
+	ParamTypeBool        ParamType = "bool"
 	ParamTypeStringSlice ParamType = "string_slice"
 )
 
@@ -25,7 +25,7 @@ type ParamDefinition struct {
 }
 
 type ParamSchema struct {
-	StrategyName string           `json:"strategy_name"`
+	StrategyName string            `json:"strategy_name"`
 	Params       []ParamDefinition `json:"params"`
 }
 
@@ -42,24 +42,24 @@ func NewParamValidator(schema ParamSchema) *ParamValidator {
 func (pv *ParamValidator) Validate(params map[string]interface{}) error {
 	for _, def := range pv.schema.Params {
 		value, exists := params[def.Name]
-		
+
 		if def.Required && !exists {
 			return fmt.Errorf("required parameter '%s' not found", def.Name)
 		}
-		
+
 		if !exists {
 			continue
 		}
-		
+
 		if err := pv.validateParamType(def, value); err != nil {
 			return err
 		}
-		
+
 		if err := pv.validateParamRange(def, value); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -128,13 +128,13 @@ func (pv *ParamValidator) ApplyDefaults(params map[string]interface{}) map[strin
 	for k, v := range params {
 		result[k] = v
 	}
-	
+
 	for _, def := range pv.schema.Params {
 		if _, exists := result[def.Name]; !exists && def.DefaultValue != nil {
 			result[def.Name] = def.DefaultValue
 		}
 	}
-	
+
 	return result
 }
 

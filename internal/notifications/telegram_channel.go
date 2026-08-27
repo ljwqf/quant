@@ -19,11 +19,11 @@ type TelegramConfig struct {
 }
 
 type TelegramChannel struct {
-	name     string
-	config   *TelegramConfig
-	enabled  bool
-	client   *http.Client
-	mu       sync.RWMutex
+	name    string
+	config  *TelegramConfig
+	enabled bool
+	client  *http.Client
+	mu      sync.RWMutex
 }
 
 type telegramSendMessageRequest struct {

@@ -126,13 +126,13 @@ func TestPositionMonitorStopNotRunning(t *testing.T) {
 
 func TestCalculatePnLPercentZeroEntry(t *testing.T) {
 	pos := &types.Position{
-		Symbol:       "BTC-USDT",
-		Side:         types.OrderSideBuy,
-		Size:         1.0,
-		EntryPrice:   0,
-		MarkPrice:    50000,
+		Symbol:        "BTC-USDT",
+		Side:          types.OrderSideBuy,
+		Size:          1.0,
+		EntryPrice:    0,
+		MarkPrice:     50000,
 		UnrealizedPnL: 0,
-		Leverage:     10,
+		Leverage:      10,
 	}
 	result := calculatePnLPercent(pos)
 	assert.Equal(t, float64(0), result)
@@ -165,7 +165,7 @@ type mockProvider struct {
 	chatFunc func(ctx context.Context, req *providers.ChatRequest) (*providers.ChatResponse, error)
 }
 
-func (m *mockProvider) Name() string               { return "mock" }
+func (m *mockProvider) Name() string { return "mock" }
 func (m *mockProvider) Chat(ctx context.Context, req *providers.ChatRequest) (*providers.ChatResponse, error) {
 	if m.chatFunc != nil {
 		return m.chatFunc(ctx, req)
@@ -271,7 +271,7 @@ func TestClientGenerateCacheKey(t *testing.T) {
 	key2 := c.generateCacheKey(req2)
 	key3 := c.generateCacheKey(req3)
 
-	assert.Equal(t, key1, key2) // same request = same key
+	assert.Equal(t, key1, key2)    // same request = same key
 	assert.NotEqual(t, key1, key3) // different content = different key
 	assert.NotEmpty(t, key1)
 }

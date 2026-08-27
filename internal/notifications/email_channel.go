@@ -12,14 +12,14 @@ import (
 )
 
 type EmailConfig struct {
-	SMTPHost     string
-	SMTPPort     int
-	Username     string
-	Password     string
-	FromEmail    string
-	FromName     string
-	ToEmails     []string
-	UseTLS       bool
+	SMTPHost  string
+	SMTPPort  int
+	Username  string
+	Password  string
+	FromEmail string
+	FromName  string
+	ToEmails  []string
+	UseTLS    bool
 }
 
 type EmailChannel struct {

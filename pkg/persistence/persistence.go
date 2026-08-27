@@ -189,29 +189,29 @@ func (fs *FileStorage) ListKeys(pattern string) ([]string, error) {
 
 // TransactionRecord 交易记录
 type TransactionRecord struct {
-	ID           string    `json:"id"`
-	Strategy     string    `json:"strategy"`
-	Symbol       string    `json:"symbol"`
-	Side         string    `json:"side"`
-	EntryPrice   float64   `json:"entry_price"`
-	ExitPrice    float64   `json:"exit_price"`
-	Quantity     float64   `json:"quantity"`
-	PNL          float64   `json:"pnl"`
-	PNLPercent   float64   `json:"pnl_percent"`
-	EntryTime    time.Time `json:"entry_time"`
-	ExitTime     time.Time `json:"exit_time"`
-	HoldingTime  string    `json:"holding_time"`
-	Status       string    `json:"status"`
-	Metadata     map[string]interface{} `json:"metadata"`
+	ID          string                 `json:"id"`
+	Strategy    string                 `json:"strategy"`
+	Symbol      string                 `json:"symbol"`
+	Side        string                 `json:"side"`
+	EntryPrice  float64                `json:"entry_price"`
+	ExitPrice   float64                `json:"exit_price"`
+	Quantity    float64                `json:"quantity"`
+	PNL         float64                `json:"pnl"`
+	PNLPercent  float64                `json:"pnl_percent"`
+	EntryTime   time.Time              `json:"entry_time"`
+	ExitTime    time.Time              `json:"exit_time"`
+	HoldingTime string                 `json:"holding_time"`
+	Status      string                 `json:"status"`
+	Metadata    map[string]interface{} `json:"metadata"`
 }
 
 // StrategyState 策略状态
 type StrategyState struct {
-	Name        string                 `json:"name"`
-	Params      map[string]interface{} `json:"params"`
-	Metrics     map[string]interface{} `json:"metrics"`
-	Position    *PositionState         `json:"position"`
-	LastUpdate  time.Time              `json:"last_update"`
+	Name       string                 `json:"name"`
+	Params     map[string]interface{} `json:"params"`
+	Metrics    map[string]interface{} `json:"metrics"`
+	Position   *PositionState         `json:"position"`
+	LastUpdate time.Time              `json:"last_update"`
 }
 
 // PositionState 持仓状态

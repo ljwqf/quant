@@ -30,33 +30,33 @@ const (
 
 // WSClient WebSocket客户端封装
 type WSClient struct {
-	conn         *websocket.Conn
+	conn          *websocket.Conn
 	subscriptions map[EventType]bool
-	sendCh       chan []byte
-	done         chan struct{}
-	mutex        sync.RWMutex
+	sendCh        chan []byte
+	done          chan struct{}
+	mutex         sync.RWMutex
 
 	// 连接状态信息
-	connectedAt    time.Time
-	status         ConnectionStatus
-	messageSent    int64
+	connectedAt     time.Time
+	status          ConnectionStatus
+	messageSent     int64
 	messageReceived int64
-	lastActivity   time.Time
-	clientID       string
+	lastActivity    time.Time
+	clientID        string
 }
 
 // NewWSClient 创建新的WebSocket客户端
 func NewWSClient(conn *websocket.Conn) *WSClient {
 	now := time.Now()
 	return &WSClient{
-		conn:            conn,
-		subscriptions:    make(map[EventType]bool),
-		sendCh:          make(chan []byte, defaultSendBufferSize),
-		done:            make(chan struct{}),
-		connectedAt:     now,
-		status:          ConnectionStatusConnected,
-		lastActivity:    now,
-		clientID:        generateClientID(),
+		conn:          conn,
+		subscriptions: make(map[EventType]bool),
+		sendCh:        make(chan []byte, defaultSendBufferSize),
+		done:          make(chan struct{}),
+		connectedAt:   now,
+		status:        ConnectionStatusConnected,
+		lastActivity:  now,
+		clientID:      generateClientID(),
 	}
 }
 

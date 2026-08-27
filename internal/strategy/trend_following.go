@@ -16,10 +16,10 @@ const (
 	DefaultTrendEMALongPeriod       = 26
 	DefaultTrendADXPeriod           = 14
 	DefaultTrendADXThreshold        = 25.0
-	DefaultTrendStrength       = 0.02
+	DefaultTrendStrength            = 0.02
 	DefaultTrendStopLossPercent     = 0.05
 	DefaultTrendTrailingStopPercent = 0.03
-	DefaultTrendSignalCooldown     = 3600
+	DefaultTrendSignalCooldown      = 3600
 )
 
 type TrendFollowingState int
@@ -31,47 +31,47 @@ const (
 )
 
 type TrendFollowingStrategy struct {
-	name                 string
-	params               map[string]interface{}
-	metrics              map[string]interface{}
-	state                TrendFollowingState
-	emaShortPeriod       int
-	emaLongPeriod        int
-	adxPeriod            int
-	adxThreshold         float64
-	trendStrength        float64
-	stopLossPercent      float64
-	trailingStopPercent  float64
+	name                string
+	params              map[string]interface{}
+	metrics             map[string]interface{}
+	state               TrendFollowingState
+	emaShortPeriod      int
+	emaLongPeriod       int
+	adxPeriod           int
+	adxThreshold        float64
+	trendStrength       float64
+	stopLossPercent     float64
+	trailingStopPercent float64
 
 	// 价格历史
 	prices      []float64
 	pricesMutex sync.RWMutex
 
 	// EMA值
-	emaShort    float64
-	emaLong     float64
-	emaMutex    sync.RWMutex
+	emaShort float64
+	emaLong  float64
+	emaMutex sync.RWMutex
 
 	// ADX相关
-	adx         float64
-	plusDI      float64
-	minusDI     float64
-	adxMutex    sync.RWMutex
+	adx      float64
+	plusDI   float64
+	minusDI  float64
+	adxMutex sync.RWMutex
 
 	// 持仓状态
-	position         *Position
-	positionMutex    sync.RWMutex
-	lastEntryPrice   float64
-	trailingStop     float64
+	position       *Position
+	positionMutex  sync.RWMutex
+	lastEntryPrice float64
+	trailingStop   float64
 
 	// 防止重复入场
-	lastSignalTime   time.Time
-	signalCooldown   int64
+	lastSignalTime time.Time
+	signalCooldown int64
 
 	// 指标
-	tradeCount     int
-	totalPnL       float64
-	metricsMutex   sync.Mutex
+	tradeCount   int
+	totalPnL     float64
+	metricsMutex sync.Mutex
 
 	// SmartFilter
 	smartFilter *SmartFilter
@@ -174,7 +174,7 @@ func (s *TrendFollowingStrategy) Init(params map[string]interface{}) error {
 func (s *TrendFollowingStrategy) OnTick(tick *types.Tick) (*types.Signal, error) {
 	s.pricesMutex.Lock()
 	s.prices = append(s.prices, tick.Price)
-	
+
 	if len(s.prices) > 200 {
 		s.prices = s.prices[len(s.prices)-200:]
 	}
@@ -188,7 +188,7 @@ func (s *TrendFollowingStrategy) OnTick(tick *types.Tick) (*types.Signal, error)
 func (s *TrendFollowingStrategy) OnBar(bar *types.Bar) (*types.Signal, error) {
 	s.pricesMutex.Lock()
 	s.prices = append(s.prices, bar.Close)
-	
+
 	if len(s.prices) > 200 {
 		s.prices = s.prices[len(s.prices)-200:]
 	}

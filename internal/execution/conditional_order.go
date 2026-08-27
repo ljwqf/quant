@@ -16,10 +16,10 @@ import (
 type ConditionalOrderType string
 
 const (
-	ConditionalTypeStopLoss     ConditionalOrderType = "stop_loss"      // 止损单
-	ConditionalTypeTakeProfit   ConditionalOrderType = "take_profit"    // 止盈单
-	ConditionalTypeTrailingStop ConditionalOrderType = "trailing_stop"  // 移动止损
-	ConditionalTypeBreakout     ConditionalOrderType = "breakout"       // 突破单
+	ConditionalTypeStopLoss     ConditionalOrderType = "stop_loss"     // 止损单
+	ConditionalTypeTakeProfit   ConditionalOrderType = "take_profit"   // 止盈单
+	ConditionalTypeTrailingStop ConditionalOrderType = "trailing_stop" // 移动止损
+	ConditionalTypeBreakout     ConditionalOrderType = "breakout"      // 突破单
 )
 
 // ConditionalOrderStatus 条件单状态
@@ -34,21 +34,21 @@ const (
 
 // ConditionalOrder 条件单
 type ConditionalOrder struct {
-	ID             string                 `json:"id"`
-	Type           ConditionalOrderType   `json:"type"`
-	Symbol         string                 `json:"symbol"`
-	Side           types.OrderSide        `json:"side"`
-	Quantity       float64                `json:"quantity"`
-	TriggerPrice   float64                `json:"trigger_price"`   // 触发价格
-	OrderPrice     float64                `json:"order_price"`     // 下单价格 (0=市价)
-	OrderType      types.OrderType        `json:"order_type"`      // 触发后的订单类型
-	Status         ConditionalOrderStatus `json:"status"`
-	CreatedAt      time.Time              `json:"created_at"`
-	TriggeredAt    time.Time              `json:"triggered_at,omitempty"`
-	TriggeredOrderID string               `json:"triggered_order_id,omitempty"` // 触发后的订单ID
-	PositionID     string                 `json:"position_id,omitempty"`        // 关联的持仓ID
-	Strategy       string                 `json:"strategy,omitempty"`           // 关联的策略
-	ExpiresAt      *time.Time             `json:"expires_at,omitempty"`         // 过期时间
+	ID               string                 `json:"id"`
+	Type             ConditionalOrderType   `json:"type"`
+	Symbol           string                 `json:"symbol"`
+	Side             types.OrderSide        `json:"side"`
+	Quantity         float64                `json:"quantity"`
+	TriggerPrice     float64                `json:"trigger_price"` // 触发价格
+	OrderPrice       float64                `json:"order_price"`   // 下单价格 (0=市价)
+	OrderType        types.OrderType        `json:"order_type"`    // 触发后的订单类型
+	Status           ConditionalOrderStatus `json:"status"`
+	CreatedAt        time.Time              `json:"created_at"`
+	TriggeredAt      time.Time              `json:"triggered_at,omitempty"`
+	TriggeredOrderID string                 `json:"triggered_order_id,omitempty"` // 触发后的订单ID
+	PositionID       string                 `json:"position_id,omitempty"`        // 关联的持仓ID
+	Strategy         string                 `json:"strategy,omitempty"`           // 关联的策略
+	ExpiresAt        *time.Time             `json:"expires_at,omitempty"`         // 过期时间
 
 	// 移动止损专用字段
 	TrailingPercent float64 `json:"trailing_percent,omitempty"` // 回撤百分比
@@ -66,11 +66,11 @@ type ConditionalOrder struct {
 
 // ConditionalOrderManager 条件单管理器
 type ConditionalOrderManager struct {
-	orders    map[string]*ConditionalOrder
+	orders         map[string]*ConditionalOrder
 	ordersBySymbol map[string]map[string]*ConditionalOrder // 按符号索引
-	exchange  exchange.Exchange
-	mu        sync.RWMutex
-	nowFunc   func() time.Time // 可注入的时间函数
+	exchange       exchange.Exchange
+	mu             sync.RWMutex
+	nowFunc        func() time.Time // 可注入的时间函数
 }
 
 // NewConditionalOrderManager 创建条件单管理器
@@ -647,15 +647,15 @@ func WithMetadata(metadata map[string]interface{}) ConditionalOrderOption {
 
 // Stats 统计信息
 type ConditionalOrderStats struct {
-	Total       int `json:"total"`
-	Pending     int `json:"pending"`
-	Triggered   int `json:"triggered"`
-	Cancelled   int `json:"cancelled"`
-	Expired     int `json:"expired"`
-	StopLoss    int `json:"stop_loss"`
-	TakeProfit  int `json:"take_profit"`
+	Total        int `json:"total"`
+	Pending      int `json:"pending"`
+	Triggered    int `json:"triggered"`
+	Cancelled    int `json:"cancelled"`
+	Expired      int `json:"expired"`
+	StopLoss     int `json:"stop_loss"`
+	TakeProfit   int `json:"take_profit"`
 	TrailingStop int `json:"trailing_stop"`
-	Breakout    int `json:"breakout"`
+	Breakout     int `json:"breakout"`
 }
 
 // GetStats 获取统计信息

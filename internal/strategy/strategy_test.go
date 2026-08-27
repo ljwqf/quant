@@ -4,22 +4,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 // mockStrategy 是一个用于测试的模拟策略
- type mockStrategy struct {
-	name   string
-	params map[string]interface{}
-	metrics map[string]interface{}
-	tickCalled     int
-	barCalled      int
-	orderBookCalled int
-	positionFilledCalled     int
-	positionReducedCalled    int
-	positionClosedCalled     int
-	rebalanceCalled          int
+type mockStrategy struct {
+	name                  string
+	params                map[string]interface{}
+	metrics               map[string]interface{}
+	tickCalled            int
+	barCalled             int
+	orderBookCalled       int
+	positionFilledCalled  int
+	positionReducedCalled int
+	positionClosedCalled  int
+	rebalanceCalled       int
 }
 
 func newMockStrategy(name string) *mockStrategy {

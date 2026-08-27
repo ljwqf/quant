@@ -25,7 +25,7 @@ func NewQuantClient(baseURL, apiToken string) *QuantClient {
 		baseURL = defaultBaseURL
 	}
 	return &QuantClient{
-		baseURL: baseURL,
+		baseURL:  baseURL,
 		apiToken: apiToken,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,

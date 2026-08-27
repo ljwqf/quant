@@ -11,23 +11,23 @@ import (
 
 // AlertCondition 告警条件
 type AlertCondition struct {
-	ID          string
-	Name        string
-	Description string
-	Severity    AlertType
-	Enabled     bool
-	Check       func() (bool, string, error)
+	ID            string
+	Name          string
+	Description   string
+	Severity      AlertType
+	Enabled       bool
+	Check         func() (bool, string, error)
 	LastTriggered time.Time
-	Cooldown    time.Duration
+	Cooldown      time.Duration
 }
 
 // AlertRuleManager 告警规则管理器
 type AlertRuleManager struct {
-	conditions    map[string]*AlertCondition
-	alertManager  *AlertManager
-	metrics       *Metrics
-	mutex         sync.RWMutex
-	stopCh        chan struct{}
+	conditions   map[string]*AlertCondition
+	alertManager *AlertManager
+	metrics      *Metrics
+	mutex        sync.RWMutex
+	stopCh       chan struct{}
 }
 
 // NewAlertRuleManager 创建告警规则管理器
@@ -43,11 +43,11 @@ func NewAlertRuleManager(alertManager *AlertManager, metrics *Metrics) *AlertRul
 // Start 启动告警规则检查
 func (arm *AlertRuleManager) Start() {
 	arm.registerDefaultConditions()
-	
+
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
@@ -82,7 +82,7 @@ func (arm *AlertRuleManager) registerDefaultConditions() {
 			return false, "", nil
 		},
 	})
-	
+
 	arm.RegisterCondition(&AlertCondition{
 		ID:          "high_memory_usage",
 		Name:        "内存使用率过高",
@@ -98,7 +98,7 @@ func (arm *AlertRuleManager) registerDefaultConditions() {
 			return false, "", nil
 		},
 	})
-	
+
 	arm.RegisterCondition(&AlertCondition{
 		ID:          "high_disk_usage",
 		Name:        "磁盘使用率过高",
@@ -114,7 +114,7 @@ func (arm *AlertRuleManager) registerDefaultConditions() {
 			return false, "", nil
 		},
 	})
-	
+
 	// API性能告警
 	arm.RegisterCondition(&AlertCondition{
 		ID:          "high_api_error_rate",
@@ -132,7 +132,7 @@ func (arm *AlertRuleManager) registerDefaultConditions() {
 			return false, "", nil
 		},
 	})
-	
+
 	// 交易性能告警
 	arm.RegisterCondition(&AlertCondition{
 		ID:          "low_fill_rate",
@@ -150,7 +150,7 @@ func (arm *AlertRuleManager) registerDefaultConditions() {
 			return false, "", nil
 		},
 	})
-	
+
 	// 策略性能告警
 	arm.RegisterCondition(&AlertCondition{
 		ID:          "strategy_loss",
@@ -174,7 +174,7 @@ func (arm *AlertRuleManager) registerDefaultConditions() {
 func (arm *AlertRuleManager) RegisterCondition(condition *AlertCondition) {
 	arm.mutex.Lock()
 	defer arm.mutex.Unlock()
-	
+
 	arm.conditions[condition.ID] = condition
 	logger.Info("注册告警规则",
 		zap.String("id", condition.ID),
@@ -185,7 +185,7 @@ func (arm *AlertRuleManager) RegisterCondition(condition *AlertCondition) {
 func (arm *AlertRuleManager) UnregisterCondition(id string) {
 	arm.mutex.Lock()
 	defer arm.mutex.Unlock()
-	
+
 	delete(arm.conditions, id)
 }
 
@@ -193,12 +193,12 @@ func (arm *AlertRuleManager) UnregisterCondition(id string) {
 func (arm *AlertRuleManager) EnableCondition(id string) error {
 	arm.mutex.Lock()
 	defer arm.mutex.Unlock()
-	
+
 	condition, exists := arm.conditions[id]
 	if !exists {
 		return fmt.Errorf("告警条件不存在: %s", id)
 	}
-	
+
 	condition.Enabled = true
 	return nil
 }
@@ -207,12 +207,12 @@ func (arm *AlertRuleManager) EnableCondition(id string) error {
 func (arm *AlertRuleManager) DisableCondition(id string) error {
 	arm.mutex.Lock()
 	defer arm.mutex.Unlock()
-	
+
 	condition, exists := arm.conditions[id]
 	if !exists {
 		return fmt.Errorf("告警条件不存在: %s", id)
 	}
-	
+
 	condition.Enabled = false
 	return nil
 }
@@ -221,7 +221,7 @@ func (arm *AlertRuleManager) DisableCondition(id string) error {
 func (arm *AlertRuleManager) GetConditions() []*AlertCondition {
 	arm.mutex.RLock()
 	defer arm.mutex.RUnlock()
-	
+
 	conditions := make([]*AlertCondition, 0, len(arm.conditions))
 	for _, cond := range arm.conditions {
 		conditions = append(conditions, cond)
@@ -239,7 +239,7 @@ func (arm *AlertRuleManager) checkConditions() {
 		}
 	}
 	arm.mutex.RUnlock()
-	
+
 	for _, cond := range conditions {
 		arm.checkCondition(cond)
 	}
@@ -249,15 +249,15 @@ func (arm *AlertRuleManager) checkConditions() {
 func (arm *AlertRuleManager) checkCondition(condition *AlertCondition) {
 	arm.mutex.Lock()
 	defer arm.mutex.Unlock()
-	
+
 	if !condition.Enabled {
 		return
 	}
-	
+
 	if time.Since(condition.LastTriggered) < condition.Cooldown {
 		return
 	}
-	
+
 	triggered, message, err := condition.Check()
 	if err != nil {
 		logger.Warn("告警条件检查失败",
@@ -265,15 +265,15 @@ func (arm *AlertRuleManager) checkCondition(condition *AlertCondition) {
 			zap.Error(err))
 		return
 	}
-	
+
 	if triggered {
 		condition.LastTriggered = time.Now()
-		
+
 		logger.Info("触发告警规则",
 			zap.String("id", condition.ID),
 			zap.String("name", condition.Name),
 			zap.String("message", message))
-		
+
 		if err := arm.alertManager.AlertWithContext(
 			condition.Severity,
 			condition.Name,
@@ -298,21 +298,21 @@ func (arm *AlertRuleManager) TriggerCondition(id string) error {
 	arm.mutex.Lock()
 	condition, exists := arm.conditions[id]
 	arm.mutex.Unlock()
-	
+
 	if !exists {
 		return fmt.Errorf("告警条件不存在: %s", id)
 	}
-	
+
 	triggered, message, err := condition.Check()
 	if err != nil {
 		return err
 	}
-	
+
 	if triggered {
 		arm.mutex.Lock()
 		condition.LastTriggered = time.Now()
 		arm.mutex.Unlock()
-		
+
 		return arm.alertManager.AlertWithContext(
 			condition.Severity,
 			condition.Name,
@@ -324,6 +324,6 @@ func (arm *AlertRuleManager) TriggerCondition(id string) error {
 			nil,
 		)
 	}
-	
+
 	return fmt.Errorf("告警条件未触发")
 }

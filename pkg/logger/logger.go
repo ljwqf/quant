@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -28,7 +29,7 @@ type LogConfig struct {
 	Compress   bool
 }
 
-var log *zap.Logger
+var log atomic.Pointer[zap.Logger]
 
 type LogSampler struct {
 	sampleRate float64
@@ -159,18 +160,19 @@ func InitWithConfig(cfg *LogConfig) error {
 		)
 	}
 
-	log = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	log.Store(zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)))
 
 	return nil
 }
 
 // GetLogger 获取日志记录器
 func GetLogger() *zap.Logger {
-	if log == nil {
-		// 默认初始化
-		_ = Init("info", "")
+	if l := log.Load(); l != nil {
+		return l
 	}
-	return log
+	// 默认初始化
+	_ = Init("info", "")
+	return log.Load()
 }
 
 // Debug 记录调试级别日志

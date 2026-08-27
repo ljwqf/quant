@@ -18,10 +18,10 @@ type Position struct {
 
 // Simulator 交易模拟器
 type Simulator struct {
-	balance    float64
-	positions  map[string]*Position
-	trades     []Trade
-	lastBar    *types.Bar
+	balance   float64
+	positions map[string]*Position
+	trades    []Trade
+	lastBar   *types.Bar
 }
 
 // NewSimulator 创建交易模拟器

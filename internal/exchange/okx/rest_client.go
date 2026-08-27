@@ -626,11 +626,11 @@ func (r *restClient) getFundingRate(instId string) (*types.FundingRate, error) {
 		Code string `json:"code"`
 		Msg  string `json:"msg"`
 		Data []struct {
-			InstId         string `json:"instId"`
-			FundingRate    string `json:"fundingRate"`
-			NextFundingRate string `json:"nextFundingRate"`
+			InstId             string `json:"instId"`
+			FundingRate        string `json:"fundingRate"`
+			NextFundingRate    string `json:"nextFundingRate"`
 			NextSettlementTime string `json:"nextFundingTime"`
-			Ts             string `json:"ts"`
+			Ts                 string `json:"ts"`
 		}
 	}
 

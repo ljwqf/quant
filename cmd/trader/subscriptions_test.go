@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/ljwqf/quant/internal/strategy"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type subscriptionExchangeStub struct {
@@ -60,7 +60,9 @@ func (s *subscriptionExchangeStub) CancelAlgoOrder(algoID, symbol string) error 
 func (s *subscriptionExchangeStub) GetAlgoOrders(symbol string, orderType string) ([]*types.AlgoOrder, error) {
 	return nil, nil
 }
-func (s *subscriptionExchangeStub) GetFundingRate(instId string) (*types.FundingRate, error) { return nil, nil }
+func (s *subscriptionExchangeStub) GetFundingRate(instId string) (*types.FundingRate, error) {
+	return nil, nil
+}
 
 type subscriptionStrategyStub struct{}
 

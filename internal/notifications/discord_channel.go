@@ -20,11 +20,11 @@ type DiscordConfig struct {
 }
 
 type DiscordChannel struct {
-	name     string
-	config   *DiscordConfig
-	enabled  bool
-	client   *http.Client
-	mu       sync.RWMutex
+	name    string
+	config  *DiscordConfig
+	enabled bool
+	client  *http.Client
+	mu      sync.RWMutex
 }
 
 type discordEmbed struct {

@@ -13,12 +13,12 @@ import (
 
 // mockExchange 测试用模拟交易所
 type mockExchange struct {
-	mu          sync.Mutex
-	tickers     map[string]float64
-	orders      []*types.Order
-	executed    []*types.OrderResult
-	orderBook   map[string]*types.OrderBook
-	bars        map[string][]*types.Bar
+	mu        sync.Mutex
+	tickers   map[string]float64
+	orders    []*types.Order
+	executed  []*types.OrderResult
+	orderBook map[string]*types.OrderBook
+	bars      map[string][]*types.Bar
 }
 
 func (m *mockExchange) GetTicker(symbol string) (*types.Tick, error) {
@@ -71,20 +71,30 @@ func (m *mockExchange) getExecutedOrders() []*types.OrderResult {
 }
 
 // 实现 exchange.Exchange 接口的其他方法
-func (m *mockExchange) Connect() error                                          { return nil }
-func (m *mockExchange) Disconnect() error                                       { return nil }
-func (m *mockExchange) GetAccount() (*types.Account, error)                     { return nil, nil }
-func (m *mockExchange) CancelOrder(orderID string) error                        { return nil }
-func (m *mockExchange) GetOrder(orderID string) (*types.Order, error)           { return nil, nil }
-func (m *mockExchange) GetOrders(symbol string, limit int) ([]*types.Order, error) { return m.orders, nil }
-func (m *mockExchange) GetPositions() ([]*types.Position, error)                { return nil, nil }
-func (m *mockExchange) GetOrderBook(symbol string, depth int) (*types.OrderBook, error) { return nil, nil }
+func (m *mockExchange) Connect() error                                { return nil }
+func (m *mockExchange) Disconnect() error                             { return nil }
+func (m *mockExchange) GetAccount() (*types.Account, error)           { return nil, nil }
+func (m *mockExchange) CancelOrder(orderID string) error              { return nil }
+func (m *mockExchange) GetOrder(orderID string) (*types.Order, error) { return nil, nil }
+func (m *mockExchange) GetOrders(symbol string, limit int) ([]*types.Order, error) {
+	return m.orders, nil
+}
+func (m *mockExchange) GetPositions() ([]*types.Position, error) { return nil, nil }
+func (m *mockExchange) GetOrderBook(symbol string, depth int) (*types.OrderBook, error) {
+	return nil, nil
+}
 func (m *mockExchange) SubscribeTicker(symbol string, handler func(*types.Tick)) error { return nil }
-func (m *mockExchange) UnsubscribeTicker(symbol string) error                   { return nil }
-func (m *mockExchange) IsConnected() bool                                       { return true }
-func (m *mockExchange) SubscribeBar(symbol string, interval string, handler func(*types.Bar)) error { return nil }
-func (m *mockExchange) SubscribeOrderBook(symbol string, handler func(*types.OrderBook)) error { return nil }
-func (m *mockExchange) GetBars(symbol string, interval string, limit int) ([]*types.Bar, error) { return nil, nil }
+func (m *mockExchange) UnsubscribeTicker(symbol string) error                          { return nil }
+func (m *mockExchange) IsConnected() bool                                              { return true }
+func (m *mockExchange) SubscribeBar(symbol string, interval string, handler func(*types.Bar)) error {
+	return nil
+}
+func (m *mockExchange) SubscribeOrderBook(symbol string, handler func(*types.OrderBook)) error {
+	return nil
+}
+func (m *mockExchange) GetBars(symbol string, interval string, limit int) ([]*types.Bar, error) {
+	return nil, nil
+}
 func (m *mockExchange) SetLeverage(symbol string, leverage int, marginMode string) error { return nil }
 func (m *mockExchange) PlaceAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderResult, error) {
 	return &types.AlgoOrderResult{AlgoID: "algo_" + order.Symbol}, nil
@@ -227,4 +237,3 @@ func TestConditionalOrderManager_StartStop(t *testing.T) {
 	// 停止管理器
 	manager.Stop()
 }
-

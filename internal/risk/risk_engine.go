@@ -68,7 +68,7 @@ func NewEngine(cfg *config.RiskConfig, opts ...EngineOption) *Engine {
 		stopChan:        make(chan struct{}),
 		nowFunc:         time.Now,
 		maxSlippage:     0.0025, // 默认 0.25%
-		orderBookDepth:  20,    // 默认深度
+		orderBookDepth:  20,     // 默认深度
 		symbolExposures: make(map[string]float64),
 	}
 
@@ -590,4 +590,3 @@ func getContractSize(symbol string) float64 {
 		return 1.0 // default: treat as spot-like
 	}
 }
-

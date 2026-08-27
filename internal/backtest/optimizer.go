@@ -10,11 +10,11 @@ import (
 
 // ParameterRange 参数范围
 type ParameterRange struct {
-	Name    string
-	Start   float64
-	End     float64
-	Step    float64
-	IsInt   bool
+	Name  string
+	Start float64
+	End   float64
+	Step  float64
+	IsInt bool
 }
 
 // OptimizationResult 优化结果

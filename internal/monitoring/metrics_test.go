@@ -36,7 +36,7 @@ func TestMetricsRecordPosition(t *testing.T) {
 
 	metrics.RecordPosition("BTC-USDT", 1.0, 50000.0)
 	positions := metrics.GetPositions()
-	
+
 	require.Contains(t, positions, "BTC-USDT")
 	assert.Equal(t, 1.0, positions["BTC-USDT"].Size)
 	assert.Equal(t, 50000.0, positions["BTC-USDT"].MarkPrice)
@@ -77,7 +77,7 @@ func TestMetricsGetAllMetrics(t *testing.T) {
 	metrics.RecordDailyLoss(-100.0)
 
 	allMetrics := metrics.GetAllMetrics()
-	
+
 	assert.Contains(t, allMetrics, "balance")
 	assert.Contains(t, allMetrics, "trade_stats")
 	assert.Contains(t, allMetrics, "daily_loss")
@@ -105,7 +105,7 @@ func TestSystemMetricsUpdate(t *testing.T) {
 
 	initialUpdate := systemMetrics.lastUpdate
 	time.Sleep(1 * time.Millisecond)
-	
+
 	systemMetrics.Update()
 	assert.True(t, systemMetrics.lastUpdate.After(initialUpdate))
 	assert.GreaterOrEqual(t, systemMetrics.GetCPUPercent(), 0.0)
@@ -117,7 +117,7 @@ func TestSystemMetricsGetMetrics(t *testing.T) {
 	systemMetrics.Update()
 
 	metrics := systemMetrics.GetMetrics()
-	
+
 	assert.Contains(t, metrics, "cpu_percent")
 	assert.Contains(t, metrics, "memory_percent")
 	assert.Contains(t, metrics, "disk_percent")
@@ -128,7 +128,7 @@ func TestSystemMetricsGetMetrics(t *testing.T) {
 
 func TestAPIMetricsRecordRequest(t *testing.T) {
 	apiMetrics := NewAPIMetrics()
-	
+
 	apiMetrics.RecordRequest("/api/test", "GET")
 	apiMetrics.RecordRequest("/api/test", "POST")
 	apiMetrics.RecordRequest("/api/other", "GET")
@@ -142,10 +142,10 @@ func TestAPIMetricsRecordRequest(t *testing.T) {
 
 func TestAPIMetricsRecordResponse(t *testing.T) {
 	apiMetrics := NewAPIMetrics()
-	
+
 	apiMetrics.RecordRequest("/api/test", "GET")
 	apiMetrics.RecordResponse("/api/test", "GET", 100*time.Millisecond, false)
-	
+
 	apiMetrics.RecordRequest("/api/test", "GET")
 	apiMetrics.RecordResponse("/api/test", "GET", 200*time.Millisecond, true)
 
@@ -163,11 +163,11 @@ func TestAPIMetricsRecordResponse(t *testing.T) {
 
 func TestStrategyMetrics(t *testing.T) {
 	strategyMetrics := NewStrategyMetrics()
-	
+
 	strategyMetrics.RecordSignal("TrendFollowing")
 	strategyMetrics.RecordSignal("TrendFollowing")
 	strategyMetrics.RecordTrade("TrendFollowing", 100.0)
-	
+
 	strategyMetrics.RecordSignal("MeanReversion")
 	strategyMetrics.RecordTrade("MeanReversion", -50.0)
 
@@ -185,7 +185,7 @@ func TestStrategyMetrics(t *testing.T) {
 
 func TestTradingMetrics(t *testing.T) {
 	tradingMetrics := NewTradingMetrics()
-	
+
 	tradingMetrics.RecordOrder("filled", 1000.0)
 	tradingMetrics.RecordOrder("filled", 2000.0)
 	tradingMetrics.RecordOrder("cancelled", 0.0)

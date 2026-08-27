@@ -16,21 +16,21 @@ import (
 
 // HealthStatus 健康状态
 type HealthStatus struct {
-	Status      string                     `json:"status"`      // healthy, unhealthy, degraded
-	Timestamp   time.Time                  `json:"timestamp"`   // 检查时间
-	Connection  bool                       `json:"connection"`  // 交易所连接状态
-	Strategies  map[string]StrategyStatus  `json:"strategies"`  // 策略状态
-	Risk        RiskStatus                 `json:"risk"`        // 风控状态
-	Uptime      string                     `json:"uptime"`      // 运行时间
-	StartTime   time.Time                  `json:"start_time"`  // 启动时间
+	Status     string                    `json:"status"`     // healthy, unhealthy, degraded
+	Timestamp  time.Time                 `json:"timestamp"`  // 检查时间
+	Connection bool                      `json:"connection"` // 交易所连接状态
+	Strategies map[string]StrategyStatus `json:"strategies"` // 策略状态
+	Risk       RiskStatus                `json:"risk"`       // 风控状态
+	Uptime     string                    `json:"uptime"`     // 运行时间
+	StartTime  time.Time                 `json:"start_time"` // 启动时间
 }
 
 // StrategyStatus 策略状态
 type StrategyStatus struct {
-	Name     string                 `json:"name"`     // 策略名称
-	Active   bool                   `json:"active"`   // 是否活跃
-	Metrics  map[string]interface{} `json:"metrics"`  // 策略指标
-	Error    string                 `json:"error"`    // 错误信息（如果有）
+	Name    string                 `json:"name"`    // 策略名称
+	Active  bool                   `json:"active"`  // 是否活跃
+	Metrics map[string]interface{} `json:"metrics"` // 策略指标
+	Error   string                 `json:"error"`   // 错误信息（如果有）
 }
 
 // RiskStatus 风控状态
@@ -45,11 +45,11 @@ type RiskStatus struct {
 
 // HealthChecker 健康检查器
 type HealthChecker struct {
-	exchange      exchange.Exchange
-	riskEngine    *risk.Engine
+	exchange       exchange.Exchange
+	riskEngine     *risk.Engine
 	strategyEngine *strategy.Engine
-	startTime     time.Time
-	mutex         sync.RWMutex
+	startTime      time.Time
+	mutex          sync.RWMutex
 }
 
 // NewHealthChecker 创建健康检查器

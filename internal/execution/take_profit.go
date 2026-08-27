@@ -21,17 +21,17 @@ const (
 )
 
 type TakeProfitConfig struct {
-	Enabled              bool             `json:"enabled"`
-	Type                 TakeProfitType   `json:"type"`
-	FixedProfitPercent   float64          `json:"fixed_profit_percent"`
-	TrailingActivation   float64          `json:"trailing_activation"`
-	TrailingDistance     float64          `json:"trailing_distance"`
-	TrailingStep         float64          `json:"trailing_step"`
-	TieredLevels         []TieredLevel    `json:"tiered_levels"`
-	ATRPeriod            int              `json:"atr_period"`
-	ATRMultiplier        float64          `json:"atr_multiplier"`
-	MaxHoldingTime       time.Duration    `json:"max_holding_time"`
-	PullbackPercent      float64          `json:"pullback_percent"`
+	Enabled            bool           `json:"enabled"`
+	Type               TakeProfitType `json:"type"`
+	FixedProfitPercent float64        `json:"fixed_profit_percent"`
+	TrailingActivation float64        `json:"trailing_activation"`
+	TrailingDistance   float64        `json:"trailing_distance"`
+	TrailingStep       float64        `json:"trailing_step"`
+	TieredLevels       []TieredLevel  `json:"tiered_levels"`
+	ATRPeriod          int            `json:"atr_period"`
+	ATRMultiplier      float64        `json:"atr_multiplier"`
+	MaxHoldingTime     time.Duration  `json:"max_holding_time"`
+	PullbackPercent    float64        `json:"pullback_percent"`
 }
 
 type TieredLevel struct {
@@ -40,39 +40,39 @@ type TieredLevel struct {
 }
 
 type PositionState struct {
-	Symbol           string
-	Side             types.OrderSide
-	EntryPrice       float64
-	CurrentPrice     float64
-	Size             float64
-	HighestPrice     float64
-	LowestPrice      float64
-	UnrealizedPnL    float64
+	Symbol               string
+	Side                 types.OrderSide
+	EntryPrice           float64
+	CurrentPrice         float64
+	Size                 float64
+	HighestPrice         float64
+	LowestPrice          float64
+	UnrealizedPnL        float64
 	UnrealizedPnLPercent float64
-	OpenTime         time.Time
-	LastUpdateTime   time.Time
-	ATR              float64
-	TakeProfitOrders map[string]*TakeProfitOrder
-	ClosedPercent    float64
+	OpenTime             time.Time
+	LastUpdateTime       time.Time
+	ATR                  float64
+	TakeProfitOrders     map[string]*TakeProfitOrder
+	ClosedPercent        float64
 }
 
 type TakeProfitOrder struct {
-	ID             string
-	Symbol         string
-	Type           TakeProfitType
-	TriggerPrice   float64
-	Quantity       float64
-	Status         string
-	CreatedAt      time.Time
-	TriggeredAt    time.Time
-	TierLevel      int
+	ID           string
+	Symbol       string
+	Type         TakeProfitType
+	TriggerPrice float64
+	Quantity     float64
+	Status       string
+	CreatedAt    time.Time
+	TriggeredAt  time.Time
+	TierLevel    int
 }
 
 type TakeProfitManager struct {
-	config         *TakeProfitConfig
-	positions      map[string]*PositionState
-	mutex          sync.RWMutex
-	atrCalculator  *ATRCalculator
+	config        *TakeProfitConfig
+	positions     map[string]*PositionState
+	mutex         sync.RWMutex
+	atrCalculator *ATRCalculator
 }
 
 type ATRCalculator struct {
@@ -279,11 +279,11 @@ func (m *TakeProfitManager) checkFixedTakeProfit(state *PositionState) *TakeProf
 
 	if profitPercent >= m.config.FixedProfitPercent {
 		return &TakeProfitSignal{
-			Symbol:      state.Symbol,
-			Side:        getExitSide(state.Side),
-			Quantity:    state.Size * (1 - state.ClosedPercent/100),
-			TriggerType: "fixed_take_profit",
-			Reason:      "达到固定止盈目标",
+			Symbol:        state.Symbol,
+			Side:          getExitSide(state.Side),
+			Quantity:      state.Size * (1 - state.ClosedPercent/100),
+			TriggerType:   "fixed_take_profit",
+			Reason:        "达到固定止盈目标",
 			ProfitPercent: profitPercent,
 		}
 	}
@@ -344,7 +344,7 @@ func (m *TakeProfitManager) checkTieredTakeProfit(state *PositionState) *TakePro
 
 	for i, level := range m.config.TieredLevels {
 		orderID := generateTieredOrderID(state.Symbol, i)
-		
+
 		if _, exists := state.TakeProfitOrders[orderID]; exists {
 			continue
 		}

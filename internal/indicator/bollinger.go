@@ -9,7 +9,7 @@ import (
 
 // Bollinger 布林带指标
 type Bollinger struct {
-	period int
+	period    int
 	deviation float64
 }
 

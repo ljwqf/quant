@@ -87,8 +87,8 @@ func (r *restClient) placeAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderRes
 		Code string `json:"code"`
 		Msg  string `json:"msg"`
 		Data []struct {
-			AlgoID  string `json:"algoId"`
-			Symbol  string `json:"instId"`
+			AlgoID   string `json:"algoId"`
+			Symbol   string `json:"instId"`
 			ClientID string `json:"clOrdId"`
 		}
 	}
@@ -106,10 +106,10 @@ func (r *restClient) placeAlgoOrder(order *types.AlgoOrder) (*types.AlgoOrderRes
 	}
 
 	return &types.AlgoOrderResult{
-		AlgoID:   response.Data[0].AlgoID,
-		Symbol:   response.Data[0].Symbol,
-		ClientID: response.Data[0].ClientID,
-		Status:   "active",
+		AlgoID:    response.Data[0].AlgoID,
+		Symbol:    response.Data[0].Symbol,
+		ClientID:  response.Data[0].ClientID,
+		Status:    "active",
 		Timestamp: time.Now(),
 	}, nil
 }

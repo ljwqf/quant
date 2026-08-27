@@ -261,18 +261,18 @@ func (r *restClient) parseOrderResponse(respBody []byte) (*types.Order, error) {
 		Code string `json:"code"`
 		Msg  string `json:"msg"`
 		Data []struct {
-			OrderID       string `json:"ordId"`
-			ClientID      string `json:"clOrdId"`
-			Symbol        string `json:"instId"`
-			Side          string `json:"side"`
-			Type          string `json:"ordType"`
-			Quantity      string `json:"sz"`
-			Price         string `json:"px"`
-			AveragePrice  string `json:"avgPx"`
-			FilledQty     string `json:"accFillSz"`
-			Status        string `json:"ordStatus"`
-			Leverage      string `json:"lever"`
-			Timestamp     string `json:"cTime"`
+			OrderID      string `json:"ordId"`
+			ClientID     string `json:"clOrdId"`
+			Symbol       string `json:"instId"`
+			Side         string `json:"side"`
+			Type         string `json:"ordType"`
+			Quantity     string `json:"sz"`
+			Price        string `json:"px"`
+			AveragePrice string `json:"avgPx"`
+			FilledQty    string `json:"accFillSz"`
+			Status       string `json:"ordStatus"`
+			Leverage     string `json:"lever"`
+			Timestamp    string `json:"cTime"`
 		}
 	}
 
@@ -377,18 +377,18 @@ func (r *restClient) getOrders(symbol string, limit int) ([]*types.Order, error)
 		Code string `json:"code"`
 		Msg  string `json:"msg"`
 		Data []struct {
-			OrderID       string `json:"ordId"`
-			ClientID      string `json:"clOrdId"`
-			Symbol        string `json:"instId"`
-			Side          string `json:"side"`
-			Type          string `json:"ordType"`
-			Quantity      string `json:"sz"`
-			Price         string `json:"px"`
-			AveragePrice  string `json:"avgPx"`
-			FilledQty     string `json:"accFillSz"`
-			Status        string `json:"ordStatus"`
-			Leverage      string `json:"lever"`
-			Timestamp     string `json:"cTime"`
+			OrderID      string `json:"ordId"`
+			ClientID     string `json:"clOrdId"`
+			Symbol       string `json:"instId"`
+			Side         string `json:"side"`
+			Type         string `json:"ordType"`
+			Quantity     string `json:"sz"`
+			Price        string `json:"px"`
+			AveragePrice string `json:"avgPx"`
+			FilledQty    string `json:"accFillSz"`
+			Status       string `json:"ordStatus"`
+			Leverage     string `json:"lever"`
+			Timestamp    string `json:"cTime"`
 		}
 	}
 

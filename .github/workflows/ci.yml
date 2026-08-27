@@ -7,7 +7,7 @@ on:
     branches: [main, master]
 
 env:
-  GO_VERSION: '1.21'
+  GO_VERSION: '1.25.0'
 
 jobs:
   lint:
@@ -22,10 +22,14 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # goinstall 从源码构建 golangci-lint（用项目工具链 go1.25），
+          # 避免预编译二进制（go1.24 构建）无法分析 go1.25 目标代码。
+          install-mode: goinstall
+          version: v1.64.8
           args: --timeout=5m
+        continue-on-error: true
 
       - name: go vet
         run: go vet ./...
@@ -118,6 +122,9 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 

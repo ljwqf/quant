@@ -13,20 +13,20 @@ import (
 
 // ReportMetrics 报告指标
 type ReportMetrics struct {
-	TotalReturn       float64 `json:"total_return"`
-	AnnualizedReturn  float64 `json:"annualized_return"`
-	Volatility        float64 `json:"volatility"`
-	SharpeRatio       float64 `json:"sharpe_ratio"`
-	MaxDrawdown       float64 `json:"max_drawdown"`
-	MaxDrawdownPeriod time.Duration `json:"max_drawdown_period"`
-	WinRate           float64 `json:"win_rate"`
-	ProfitFactor      float64 `json:"profit_factor"`
-	AverageWin        float64 `json:"average_win"`
-	AverageLoss       float64 `json:"average_loss"`
-	WinLossRatio      float64 `json:"win_loss_ratio"`
-	TotalTrades       int     `json:"total_trades"`
-	WinTrades         int     `json:"win_trades"`
-	LossTrades        int     `json:"loss_trades"`
+	TotalReturn        float64       `json:"total_return"`
+	AnnualizedReturn   float64       `json:"annualized_return"`
+	Volatility         float64       `json:"volatility"`
+	SharpeRatio        float64       `json:"sharpe_ratio"`
+	MaxDrawdown        float64       `json:"max_drawdown"`
+	MaxDrawdownPeriod  time.Duration `json:"max_drawdown_period"`
+	WinRate            float64       `json:"win_rate"`
+	ProfitFactor       float64       `json:"profit_factor"`
+	AverageWin         float64       `json:"average_win"`
+	AverageLoss        float64       `json:"average_loss"`
+	WinLossRatio       float64       `json:"win_loss_ratio"`
+	TotalTrades        int           `json:"total_trades"`
+	WinTrades          int           `json:"win_trades"`
+	LossTrades         int           `json:"loss_trades"`
 	AverageHoldingTime time.Duration `json:"average_holding_time"`
 }
 
@@ -39,18 +39,18 @@ type MonthlyReturn struct {
 
 // Report 回测报告
 type Report struct {
-	StrategyName    string        `json:"strategy_name"`
-	StartTime       time.Time     `json:"start_time"`
-	EndTime         time.Time     `json:"end_time"`
-	Duration        time.Duration `json:"duration"`
-	InitialBalance  float64       `json:"initial_balance"`
-	FinalBalance    float64       `json:"final_balance"`
-	Metrics         ReportMetrics `json:"metrics"`
-	MonthlyReturns  []MonthlyReturn `json:"monthly_returns"`
-	EquityCurve     []EquityPoint  `json:"equity_curve"`
-	TopTrades       []Trade        `json:"top_trades"`
-	WorstTrades     []Trade        `json:"worst_trades"`
-	GeneratedAt     time.Time      `json:"generated_at"`
+	StrategyName   string          `json:"strategy_name"`
+	StartTime      time.Time       `json:"start_time"`
+	EndTime        time.Time       `json:"end_time"`
+	Duration       time.Duration   `json:"duration"`
+	InitialBalance float64         `json:"initial_balance"`
+	FinalBalance   float64         `json:"final_balance"`
+	Metrics        ReportMetrics   `json:"metrics"`
+	MonthlyReturns []MonthlyReturn `json:"monthly_returns"`
+	EquityCurve    []EquityPoint   `json:"equity_curve"`
+	TopTrades      []Trade         `json:"top_trades"`
+	WorstTrades    []Trade         `json:"worst_trades"`
+	GeneratedAt    time.Time       `json:"generated_at"`
 }
 
 // ReportGenerator 报告生成器
@@ -221,7 +221,7 @@ func (rg *ReportGenerator) calculateMonthlyReturns() []MonthlyReturn {
 
 	for _, point := range rg.result.EquityCurve {
 		key := fmt.Sprintf("%d-%02d", point.Timestamp.Year(), point.Timestamp.Month())
-		
+
 		if _, exists := monthlyStartBalance[key]; !exists {
 			monthlyStartBalance[key] = point.Equity
 		}
@@ -298,7 +298,7 @@ func (r *Report) ToString() string {
 	sb.WriteString(fmt.Sprintf("╔══════════════════════════════════════════════════════════════╗\n"))
 	sb.WriteString(fmt.Sprintf("║                    回测报告 - %-30s    ║\n", r.StrategyName))
 	sb.WriteString(fmt.Sprintf("╠══════════════════════════════════════════════════════════════╣\n"))
-	sb.WriteString(fmt.Sprintf("║ 回测期间: %s 至 %s                              ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 回测期间: %s 至 %s                              ║\n",
 		r.StartTime.Format("2006-01-02"), r.EndTime.Format("2006-01-02")))
 	sb.WriteString(fmt.Sprintf("║ 回测时长: %-50s ║\n", r.Duration.String()))
 	sb.WriteString(fmt.Sprintf("║ 初始资金: %.2f                                              ║\n", r.InitialBalance))
@@ -306,20 +306,20 @@ func (r *Report) ToString() string {
 	sb.WriteString(fmt.Sprintf("╠══════════════════════════════════════════════════════════════╣\n"))
 	sb.WriteString(fmt.Sprintf("║                           绩效指标                             ║\n"))
 	sb.WriteString(fmt.Sprintf("╠══════════════════════════════════════════════════════════════╣\n"))
-	sb.WriteString(fmt.Sprintf("║ 总收益率:   %8.2f%% | 年化收益率: %8.2f%%                ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 总收益率:   %8.2f%% | 年化收益率: %8.2f%%                ║\n",
 		r.Metrics.TotalReturn*100, r.Metrics.AnnualizedReturn*100))
-	sb.WriteString(fmt.Sprintf("║ 夏普比率:   %8.2f   | 波动率:     %8.2f%%                ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 夏普比率:   %8.2f   | 波动率:     %8.2f%%                ║\n",
 		r.Metrics.SharpeRatio, r.Metrics.Volatility*100))
-	sb.WriteString(fmt.Sprintf("║ 最大回撤:   %8.2f%% | 回撤周期:   %s                    ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 最大回撤:   %8.2f%% | 回撤周期:   %s                    ║\n",
 		r.Metrics.MaxDrawdown*100, r.Metrics.MaxDrawdownPeriod.String()))
-	sb.WriteString(fmt.Sprintf("║ 胜率:       %8.2f%% | 盈亏比:     %8.2f                   ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 胜率:       %8.2f%% | 盈亏比:     %8.2f                   ║\n",
 		r.Metrics.WinRate*100, r.Metrics.WinLossRatio))
-	sb.WriteString(fmt.Sprintf("║ 盈利因子:   %8.2f   | 平均持仓:   %s                    ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 盈利因子:   %8.2f   | 平均持仓:   %s                    ║\n",
 		r.Metrics.ProfitFactor, r.Metrics.AverageHoldingTime.String()))
 	sb.WriteString(fmt.Sprintf("╠══════════════════════════════════════════════════════════════╣\n"))
-	sb.WriteString(fmt.Sprintf("║ 总交易数:   %4d     | 盈利交易:   %4d     | 亏损交易: %4d ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 总交易数:   %4d     | 盈利交易:   %4d     | 亏损交易: %4d ║\n",
 		r.Metrics.TotalTrades, r.Metrics.WinTrades, r.Metrics.LossTrades))
-	sb.WriteString(fmt.Sprintf("║ 平均盈利:   %8.2f   | 平均亏损:   %8.2f                   ║\n", 
+	sb.WriteString(fmt.Sprintf("║ 平均盈利:   %8.2f   | 平均亏损:   %8.2f                   ║\n",
 		r.Metrics.AverageWin, r.Metrics.AverageLoss))
 	sb.WriteString(fmt.Sprintf("╚══════════════════════════════════════════════════════════════╝\n"))
 

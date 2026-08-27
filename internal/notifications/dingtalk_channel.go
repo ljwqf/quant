@@ -18,10 +18,10 @@ import (
 
 // DingTalkConfig 钉钉机器人配置
 type DingTalkConfig struct {
-	WebhookURL string `mapstructure:"webhook_url"`
-	Secret     string `mapstructure:"secret"` // 加签密钥（可选）
+	WebhookURL string   `mapstructure:"webhook_url"`
+	Secret     string   `mapstructure:"secret"`     // 加签密钥（可选）
 	AtMobiles  []string `mapstructure:"at_mobiles"` // @指定手机号
-	AtAll      bool   `mapstructure:"at_all"`
+	AtAll      bool     `mapstructure:"at_all"`
 }
 
 // DingTalkChannel 钉钉通知渠道
@@ -35,9 +35,9 @@ type DingTalkChannel struct {
 
 // dingtalkMessage 钉钉消息结构
 type dingtalkMessage struct {
-	MsgType string               `json:"msgtype"`
+	MsgType  string                  `json:"msgtype"`
 	Markdown dingtalkMarkdownContent `json:"markdown"`
-	At      dingtalkAtConfig     `json:"at"`
+	At       dingtalkAtConfig        `json:"at"`
 }
 
 type dingtalkMarkdownContent struct {

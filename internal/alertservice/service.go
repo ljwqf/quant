@@ -27,9 +27,9 @@ const (
 type AlertLevel string
 
 const (
-	AlertLevelInfo    AlertLevel = "info"
-	AlertLevelWarning AlertLevel = "warning"
-	AlertLevelError   AlertLevel = "error"
+	AlertLevelInfo     AlertLevel = "info"
+	AlertLevelWarning  AlertLevel = "warning"
+	AlertLevelError    AlertLevel = "error"
 	AlertLevelCritical AlertLevel = "critical"
 )
 
