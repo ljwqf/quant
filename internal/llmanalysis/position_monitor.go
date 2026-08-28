@@ -17,35 +17,35 @@ import (
 
 // PositionMonitorConfig LLM持仓监控配置
 type PositionMonitorConfig struct {
-	Enable         bool
-	CheckInterval  time.Duration
-	RiskThreshold  string  // 触发告警的最低风险等级: "low", "medium", "high"
-	MinPnLPercent    float64 // 盈亏百分比阈值，超过才触发分析
-	MaxConsecutiveFailures int // 最大连续失败次数
+	Enable                 bool
+	CheckInterval          time.Duration
+	RiskThreshold          string  // 触发告警的最低风险等级: "low", "medium", "high"
+	MinPnLPercent          float64 // 盈亏百分比阈值，超过才触发分析
+	MaxConsecutiveFailures int     // 最大连续失败次数
 }
 
 // DefaultPositionMonitorConfig 默认配置
 func DefaultPositionMonitorConfig() *PositionMonitorConfig {
 	return &PositionMonitorConfig{
-		Enable:         false,
-		CheckInterval:  5 * time.Minute,
-		RiskThreshold:  "high",
-		MinPnLPercent:  2.0,
+		Enable:                 false,
+		CheckInterval:          5 * time.Minute,
+		RiskThreshold:          "high",
+		MinPnLPercent:          2.0,
 		MaxConsecutiveFailures: 3,
 	}
 }
 
 // PositionMonitor LLM持仓监控器
 type PositionMonitor struct {
-	exch        exchange.Exchange
-	analyzer    *Analyzer
-	alertSvc    *alertservice.AlertService
-	riskEngine  *risk.Engine
-	cfg         *PositionMonitorConfig
-	stopCh      chan struct{}
-	once        sync.Once
-	running     bool
-	mu          sync.RWMutex
+	exch       exchange.Exchange
+	analyzer   *Analyzer
+	alertSvc   *alertservice.AlertService
+	riskEngine *risk.Engine
+	cfg        *PositionMonitorConfig
+	stopCh     chan struct{}
+	once       sync.Once
+	running    bool
+	mu         sync.RWMutex
 
 	// 防抖：记录上次分析时间和结果
 	lastAnalysisTime map[string]time.Time
@@ -221,9 +221,9 @@ func (pm *PositionMonitor) analyzePosition(pos *types.Position) {
 
 func (pm *PositionMonitor) shouldAlert(result *AnalysisResult, pnlPercent float64) bool {
 	riskLevels := map[string]int{
-		"low":    1,
-		"medium": 2,
-		"high":   3,
+		"low":      1,
+		"medium":   2,
+		"high":     3,
 		"critical": 4,
 	}
 

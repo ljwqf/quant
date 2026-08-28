@@ -5,13 +5,13 @@ import (
 )
 
 type Repositories struct {
-	ManualTrade     ManualTradeRepository
-	AIAnalysis      AIAnalysisRepository
-	NewsEvent       NewsEventRepository
-	EconomicEvent   EconomicEventRepository
-	AlertRecord     AlertRecordRepository
-	Kline           KlineRepository
-	Tick            TickRepository
+	ManualTrade   ManualTradeRepository
+	AIAnalysis    AIAnalysisRepository
+	NewsEvent     NewsEventRepository
+	EconomicEvent EconomicEventRepository
+	AlertRecord   AlertRecordRepository
+	Kline         KlineRepository
+	Tick          TickRepository
 }
 
 func NewRepositories(db *storage.Database) *Repositories {

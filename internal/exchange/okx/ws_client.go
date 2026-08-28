@@ -28,20 +28,20 @@ const (
 )
 
 type wsClient struct {
-	config           *config.OKXConfig
-	conn             *websocket.Conn
-	state            int32
-	mutex            sync.Mutex
-	connMutex        sync.Mutex
-	heartbeatTicker  *time.Ticker
-	messageHandler   func([]byte)
-	subscriptions    map[string]bool
-	reconnectChan    chan struct{}
-	ctx              context.Context
-	cancel           context.CancelFunc
-	connCtx          context.Context    // per-connection context, replaced on each connect/reconnect
-	connCancel       context.CancelFunc // cancels connCtx to kill old readLoop/heartbeatLoop
-	connMu           sync.Mutex         // protects connCtx/connCancel access
+	config          *config.OKXConfig
+	conn            *websocket.Conn
+	state           int32
+	mutex           sync.Mutex
+	connMutex       sync.Mutex
+	heartbeatTicker *time.Ticker
+	messageHandler  func([]byte)
+	subscriptions   map[string]bool
+	reconnectChan   chan struct{}
+	ctx             context.Context
+	cancel          context.CancelFunc
+	connCtx         context.Context    // per-connection context, replaced on each connect/reconnect
+	connCancel      context.CancelFunc // cancels connCtx to kill old readLoop/heartbeatLoop
+	connMu          sync.Mutex         // protects connCtx/connCancel access
 }
 
 type wsMessage struct {

@@ -14,19 +14,19 @@ import (
 
 // DataService 数据采集服务
 type DataService struct {
-	cfg             *config.Config
-	db              *storage.Database
-	cryptoquant     *cryptoquant.Client
-	cryptoNews      *CryptoNewsClient
+	cfg              *config.Config
+	db               *storage.Database
+	cryptoquant      *cryptoquant.Client
+	cryptoNews       *CryptoNewsClient
 	economicCalendar *EconomicCalendarClient
-	newsRepo        repository.NewsEventRepository
-	economicRepo    repository.EconomicEventRepository
-	sourceManager   *SourceManager
-	dataQueue       DataQueue
-	running         bool
-	stopCh          chan struct{}
-	wg              sync.WaitGroup
-	mutex           sync.RWMutex
+	newsRepo         repository.NewsEventRepository
+	economicRepo     repository.EconomicEventRepository
+	sourceManager    *SourceManager
+	dataQueue        DataQueue
+	running          bool
+	stopCh           chan struct{}
+	wg               sync.WaitGroup
+	mutex            sync.RWMutex
 }
 
 // NewDataService 创建数据采集服务
@@ -38,16 +38,16 @@ func NewDataService(cfg *config.Config, db *storage.Database) *DataService {
 	}
 
 	service := &DataService{
-		cfg:           cfg,
-		db:            db,
-		cryptoquant:   cqClient,
-		cryptoNews:    NewCryptoNewsClient(nil),
+		cfg:              cfg,
+		db:               db,
+		cryptoquant:      cqClient,
+		cryptoNews:       NewCryptoNewsClient(nil),
 		economicCalendar: NewEconomicCalendarClient(nil),
-		newsRepo:      repository.NewNewsEventRepository(db.DB()),
-		economicRepo:  repository.NewEconomicEventRepository(db.DB()),
-		sourceManager: NewSourceManager(),
-		dataQueue:     NewMemoryQueue(1000),
-		stopCh:        make(chan struct{}),
+		newsRepo:         repository.NewNewsEventRepository(db.DB()),
+		economicRepo:     repository.NewEconomicEventRepository(db.DB()),
+		sourceManager:    NewSourceManager(),
+		dataQueue:        NewMemoryQueue(1000),
+		stopCh:           make(chan struct{}),
 	}
 
 	service.initDefaultSources()

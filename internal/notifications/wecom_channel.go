@@ -14,8 +14,8 @@ import (
 
 // WeComConfig 企业微信机器人配置
 type WeComConfig struct {
-	WebhookURL string `mapstructure:"webhook_url"`
-	MentionedList []string `mapstructure:"mentioned_list"` // @指定用户ID
+	WebhookURL          string   `mapstructure:"webhook_url"`
+	MentionedList       []string `mapstructure:"mentioned_list"`        // @指定用户ID
 	MentionedMobileList []string `mapstructure:"mentioned_mobile_list"` // @指定手机号
 }
 
@@ -30,7 +30,7 @@ type WeComChannel struct {
 
 // weComMessage 企业微信消息结构
 type weComMessage struct {
-	MsgType string              `json:"msgtype"`
+	MsgType  string               `json:"msgtype"`
 	Markdown weComMarkdownContent `json:"markdown"`
 }
 

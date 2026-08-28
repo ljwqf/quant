@@ -40,7 +40,7 @@ func (sm *SystemMetrics) Update() {
 
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	totalMem := float64(memStats.Sys)
 	usedMem := float64(memStats.Alloc)
 	sm.memoryPercent = (usedMem / totalMem) * 100
@@ -84,12 +84,12 @@ func (sm *SystemMetrics) GetMetrics() map[string]interface{} {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 	return map[string]interface{}{
-		"cpu_percent":     sm.cpuPercent,
-		"memory_percent":  sm.memoryPercent,
-		"disk_percent":    sm.diskPercent,
-		"network_sent":    sm.networkSent,
-		"network_recv":    sm.networkRecv,
-		"last_update":     sm.lastUpdate,
+		"cpu_percent":    sm.cpuPercent,
+		"memory_percent": sm.memoryPercent,
+		"disk_percent":   sm.diskPercent,
+		"network_sent":   sm.networkSent,
+		"network_recv":   sm.networkRecv,
+		"last_update":    sm.lastUpdate,
 	}
 }
 
@@ -125,12 +125,12 @@ func (am *APIMetrics) RecordResponse(endpoint string, method string, duration ti
 	key := method + " " + endpoint
 	am.mutex.Lock()
 	defer am.mutex.Unlock()
-	
+
 	am.activeRequests--
 	if isError {
 		am.errorCount[key]++
 	}
-	
+
 	if len(am.responseTime[key]) >= 1000 {
 		am.responseTime[key] = am.responseTime[key][1:]
 	}
@@ -142,12 +142,12 @@ func (am *APIMetrics) GetEndpointStats(endpoint string, method string) map[strin
 	key := method + " " + endpoint
 	am.mutex.RLock()
 	defer am.mutex.RUnlock()
-	
+
 	stats := map[string]interface{}{
 		"request_count": am.requestCount[key],
 		"error_count":   am.errorCount[key],
 	}
-	
+
 	times := am.responseTime[key]
 	if len(times) > 0 {
 		var total time.Duration
@@ -171,7 +171,7 @@ func (am *APIMetrics) GetEndpointStats(endpoint string, method string) map[strin
 		stats["min_response_time"] = min.Milliseconds()
 		stats["max_response_time"] = max.Milliseconds()
 	}
-	
+
 	return stats
 }
 
@@ -179,7 +179,7 @@ func (am *APIMetrics) GetEndpointStats(endpoint string, method string) map[strin
 func (am *APIMetrics) GetAllStats() map[string]interface{} {
 	am.mutex.RLock()
 	defer am.mutex.RUnlock()
-	
+
 	totalRequests := uint64(0)
 	totalErrors := uint64(0)
 	for _, count := range am.requestCount {
@@ -188,27 +188,27 @@ func (am *APIMetrics) GetAllStats() map[string]interface{} {
 	for _, count := range am.errorCount {
 		totalErrors += count
 	}
-	
+
 	errorRate := 0.0
 	if totalRequests > 0 {
 		errorRate = float64(totalErrors) / float64(totalRequests)
 	}
-	
+
 	return map[string]interface{}{
-		"total_requests":   totalRequests,
-		"total_errors":     totalErrors,
-		"error_rate":       errorRate,
-		"active_requests":  am.activeRequests,
-		"endpoint_count":   len(am.requestCount),
+		"total_requests":  totalRequests,
+		"total_errors":    totalErrors,
+		"error_rate":      errorRate,
+		"active_requests": am.activeRequests,
+		"endpoint_count":  len(am.requestCount),
 	}
 }
 
 // StrategyMetrics 策略性能监控
 type StrategyMetrics struct {
-	strategySignals   map[string]uint64
-	strategyTrades    map[string]uint64
-	strategyPnL       map[string]float64
-	mutex             sync.RWMutex
+	strategySignals map[string]uint64
+	strategyTrades  map[string]uint64
+	strategyPnL     map[string]float64
+	mutex           sync.RWMutex
 }
 
 // NewStrategyMetrics 创建策略性能监控
@@ -250,11 +250,11 @@ func (sm *StrategyMetrics) GetStrategyStats(strategyName string) map[string]inte
 func (sm *StrategyMetrics) GetAllStats() map[string]interface{} {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
-	
+
 	totalSignals := uint64(0)
 	totalTrades := uint64(0)
 	totalPnL := 0.0
-	
+
 	for _, count := range sm.strategySignals {
 		totalSignals += count
 	}
@@ -264,22 +264,22 @@ func (sm *StrategyMetrics) GetAllStats() map[string]interface{} {
 	for _, pnl := range sm.strategyPnL {
 		totalPnL += pnl
 	}
-	
+
 	return map[string]interface{}{
-		"total_signals": totalSignals,
-		"total_trades":  totalTrades,
-		"total_pnl":     totalPnL,
+		"total_signals":  totalSignals,
+		"total_trades":   totalTrades,
+		"total_pnl":      totalPnL,
 		"strategy_count": len(sm.strategySignals),
 	}
 }
 
 // TradingMetrics 交易性能监控
 type TradingMetrics struct {
-	totalOrders      uint64
-	filledOrders     uint64
-	cancelledOrders  uint64
-	totalVolume      float64
-	mutex            sync.RWMutex
+	totalOrders     uint64
+	filledOrders    uint64
+	cancelledOrders uint64
+	totalVolume     float64
+	mutex           sync.RWMutex
 }
 
 // NewTradingMetrics 创建交易性能监控
@@ -291,7 +291,7 @@ func NewTradingMetrics() *TradingMetrics {
 func (tm *TradingMetrics) RecordOrder(status string, volume float64) {
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
-	
+
 	tm.totalOrders++
 	switch status {
 	case "filled":
@@ -306,17 +306,17 @@ func (tm *TradingMetrics) RecordOrder(status string, volume float64) {
 func (tm *TradingMetrics) GetStats() map[string]interface{} {
 	tm.mutex.RLock()
 	defer tm.mutex.RUnlock()
-	
+
 	fillRate := 0.0
 	if tm.totalOrders > 0 {
 		fillRate = float64(tm.filledOrders) / float64(tm.totalOrders)
 	}
-	
+
 	return map[string]interface{}{
-		"total_orders":      tm.totalOrders,
-		"filled_orders":     tm.filledOrders,
-		"cancelled_orders":  tm.cancelledOrders,
-		"fill_rate":         fillRate,
-		"total_volume":      tm.totalVolume,
+		"total_orders":     tm.totalOrders,
+		"filled_orders":    tm.filledOrders,
+		"cancelled_orders": tm.cancelledOrders,
+		"fill_rate":        fillRate,
+		"total_volume":     tm.totalVolume,
 	}
 }

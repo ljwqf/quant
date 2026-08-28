@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ljwqf/quant/internal/strategy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ljwqf/quant/internal/strategy"
 )
 
 func TestParseSmartFilterPayloadSupportsNestedData(t *testing.T) {

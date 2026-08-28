@@ -12,10 +12,10 @@ type SymbolLock struct {
 }
 
 type symbolLockEntry struct {
-	mutex       sync.Mutex
-	holder      string
-	acquiredAt  time.Time
-	lockCount   int
+	mutex      sync.Mutex
+	holder     string
+	acquiredAt time.Time
+	lockCount  int
 }
 
 var (

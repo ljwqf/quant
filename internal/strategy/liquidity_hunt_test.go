@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/ljwqf/quant/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLiquidityHuntEngineInit(t *testing.T) {
 	engine := NewLiquidityHuntEngine()
 	params := map[string]interface{}{
-		"fake_break_threshold":  0.3,
+		"fake_break_threshold":   0.3,
 		"funding_rate_threshold": 0.0005,
 		"time_window":            []string{"20:30", "23:00"},
 		"oi_delta_threshold":     50.0,
@@ -140,7 +140,7 @@ func TestLiquidityHuntEngineOnOrderBook(t *testing.T) {
 func TestLiquidityHuntEngineGetParams(t *testing.T) {
 	engine := NewLiquidityHuntEngine()
 	params := map[string]interface{}{
-		"fake_break_threshold":  0.3,
+		"fake_break_threshold":   0.3,
 		"funding_rate_threshold": 0.0005,
 		"time_window":            []string{"20:30", "23:00"},
 		"oi_delta_threshold":     50.0,
@@ -159,7 +159,7 @@ func TestLiquidityHuntEngineGetParams(t *testing.T) {
 func TestLiquidityHuntEngineSetParams(t *testing.T) {
 	engine := NewLiquidityHuntEngine()
 	params := map[string]interface{}{
-		"fake_break_threshold":  0.3,
+		"fake_break_threshold":   0.3,
 		"funding_rate_threshold": 0.0005,
 	}
 	err := engine.Init(params)
@@ -167,7 +167,7 @@ func TestLiquidityHuntEngineSetParams(t *testing.T) {
 
 	// 测试更新参数
 	newParams := map[string]interface{}{
-		"fake_break_threshold":  0.4,
+		"fake_break_threshold":   0.4,
 		"funding_rate_threshold": 0.001,
 	}
 	engine.SetParams(newParams)
@@ -190,4 +190,3 @@ func TestLiquidityHuntEngineIsInTimeWindow(t *testing.T) {
 	// 注意：这里的测试依赖于当前时间，可能在边界时间会失败
 	// 但为了简单起见，我们假设当前时间在窗口内
 }
-

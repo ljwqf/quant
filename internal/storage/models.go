@@ -4,22 +4,22 @@ import "time"
 
 // ManualTrade 手动交易记录
 type ManualTrade struct {
-	ID               int64     `db:"id"`
-	OrderID          string    `db:"order_id"`
-	Symbol           string    `db:"symbol"`
-	Side             string    `db:"side"`
-	Type             string    `db:"type"`
-	Price            float64   `db:"price"`
-	Size             float64   `db:"size"`
-	FilledSize       float64   `db:"filled_size"`
-	Status           string    `db:"status"`
-	Leverage         int       `db:"leverage"`
-	TakeProfit       float64   `db:"take_profit"`
-	StopLoss         float64   `db:"stop_loss"`
-	AIAnalysisID     int64     `db:"ai_analysis_id"`
-	AIAnalysisSummary string   `db:"ai_analysis_summary"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	ID                int64     `db:"id"`
+	OrderID           string    `db:"order_id"`
+	Symbol            string    `db:"symbol"`
+	Side              string    `db:"side"`
+	Type              string    `db:"type"`
+	Price             float64   `db:"price"`
+	Size              float64   `db:"size"`
+	FilledSize        float64   `db:"filled_size"`
+	Status            string    `db:"status"`
+	Leverage          int       `db:"leverage"`
+	TakeProfit        float64   `db:"take_profit"`
+	StopLoss          float64   `db:"stop_loss"`
+	AIAnalysisID      int64     `db:"ai_analysis_id"`
+	AIAnalysisSummary string    `db:"ai_analysis_summary"`
+	CreatedAt         time.Time `db:"created_at"`
+	UpdatedAt         time.Time `db:"updated_at"`
 }
 
 // AIAnalysis AI分析记录

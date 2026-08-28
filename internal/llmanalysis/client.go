@@ -94,7 +94,7 @@ func (c *Client) Chat(ctx context.Context, req *providers.ChatRequest) (*provide
 	}
 
 	cacheKey := c.generateCacheKey(req)
-	
+
 	if cached := c.getFromCache(cacheKey); cached != nil {
 		logger.Debug("使用缓存的大模型响应", zap.String("cache_key", cacheKey))
 		return cached, nil
@@ -109,8 +109,8 @@ func (c *Client) Chat(ctx context.Context, req *providers.ChatRequest) (*provide
 		}
 
 		lastErr = err
-		logger.Warn("大模型请求失败，准备重试", 
-			zap.Int("attempt", i+1), 
+		logger.Warn("大模型请求失败，准备重试",
+			zap.Int("attempt", i+1),
 			zap.Int("max_retries", c.maxRetries),
 			zap.Error(err))
 

@@ -205,13 +205,13 @@ func (m *Metrics) GetAllMetrics() map[string]interface{} {
 	defer m.mutex.RUnlock()
 
 	return map[string]interface{}{
-		"balance":        m.GetBalance(),
-		"trade_stats":    m.GetTradeStats(),
-		"daily_loss":     m.GetDailyLoss(),
-		"system":         m.systemMetrics.GetMetrics(),
-		"api":            m.apiMetrics.GetAllStats(),
-		"strategy":       m.strategyMetrics.GetAllStats(),
-		"trading":        m.tradingMetrics.GetStats(),
-		"last_update":    m.lastUpdateTime,
+		"balance":     m.GetBalance(),
+		"trade_stats": m.GetTradeStats(),
+		"daily_loss":  m.GetDailyLoss(),
+		"system":      m.systemMetrics.GetMetrics(),
+		"api":         m.apiMetrics.GetAllStats(),
+		"strategy":    m.strategyMetrics.GetAllStats(),
+		"trading":     m.tradingMetrics.GetStats(),
+		"last_update": m.lastUpdateTime,
 	}
 }

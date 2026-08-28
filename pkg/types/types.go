@@ -50,56 +50,56 @@ type Order struct {
 
 // OrderResult 订单结果
 type OrderResult struct {
-	OrderID      string      `json:"order_id"`
-	ClientID     string      `json:"client_id,omitempty"`
-	Symbol       string      `json:"symbol"`
-	Side         OrderSide   `json:"side"`
-	Type         OrderType   `json:"type"`
-	Quantity     float64     `json:"quantity"`
-	Price        float64     `json:"price,omitempty"`
-	Status       OrderStatus `json:"status"`
-	Timestamp    time.Time   `json:"timestamp"`
-	Error        string      `json:"error,omitempty"`
+	OrderID   string      `json:"order_id"`
+	ClientID  string      `json:"client_id,omitempty"`
+	Symbol    string      `json:"symbol"`
+	Side      OrderSide   `json:"side"`
+	Type      OrderType   `json:"type"`
+	Quantity  float64     `json:"quantity"`
+	Price     float64     `json:"price,omitempty"`
+	Status    OrderStatus `json:"status"`
+	Timestamp time.Time   `json:"timestamp"`
+	Error     string      `json:"error,omitempty"`
 }
 
 // Trade 交易记录
 type Trade struct {
-	ID          string    `json:"id"`
-	OrderID     string    `json:"order_id"`
-	Symbol      string    `json:"symbol"`
-	Side        OrderSide `json:"side"`
-	Price       float64   `json:"price"`
-	Quantity    float64   `json:"quantity"`
-	Fee         float64   `json:"fee"`
-	Timestamp   time.Time `json:"timestamp"`
-	IsMaker     bool      `json:"is_maker"`
-	OrderType   OrderType `json:"order_type"`
+	ID        string    `json:"id"`
+	OrderID   string    `json:"order_id"`
+	Symbol    string    `json:"symbol"`
+	Side      OrderSide `json:"side"`
+	Price     float64   `json:"price"`
+	Quantity  float64   `json:"quantity"`
+	Fee       float64   `json:"fee"`
+	Timestamp time.Time `json:"timestamp"`
+	IsMaker   bool      `json:"is_maker"`
+	OrderType OrderType `json:"order_type"`
 }
 
 // Position 仓位
 type Position struct {
-	Symbol         string    `json:"symbol"`
-	Side           OrderSide `json:"side"`
-	Size           float64   `json:"size"`
-	EntryPrice     float64   `json:"entry_price"`
-	MarkPrice      float64   `json:"mark_price"`
-	UnrealizedPnL  float64   `json:"unrealized_pnl"`
-	Leverage       int       `json:"leverage"`
-	LiquidationPrice float64 `json:"liquidation_price"`
-	Timestamp      time.Time `json:"timestamp"`
+	Symbol           string    `json:"symbol"`
+	Side             OrderSide `json:"side"`
+	Size             float64   `json:"size"`
+	EntryPrice       float64   `json:"entry_price"`
+	MarkPrice        float64   `json:"mark_price"`
+	UnrealizedPnL    float64   `json:"unrealized_pnl"`
+	Leverage         int       `json:"leverage"`
+	LiquidationPrice float64   `json:"liquidation_price"`
+	Timestamp        time.Time `json:"timestamp"`
 }
 
 // Tick 行情快照
 type Tick struct {
-	Symbol     string    `json:"symbol"`
-	Price      float64   `json:"price"`
-	Size       float64   `json:"size"`
-	Side       OrderSide `json:"side,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
-	Volume24h  float64   `json:"volume_24h,omitempty"`
-	Open24h    float64   `json:"open_24h,omitempty"`
-	High24h    float64   `json:"high_24h,omitempty"`
-	Low24h     float64   `json:"low_24h,omitempty"`
+	Symbol    string    `json:"symbol"`
+	Price     float64   `json:"price"`
+	Size      float64   `json:"size"`
+	Side      OrderSide `json:"side,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Volume24h float64   `json:"volume_24h,omitempty"`
+	Open24h   float64   `json:"open_24h,omitempty"`
+	High24h   float64   `json:"high_24h,omitempty"`
+	Low24h    float64   `json:"low_24h,omitempty"`
 }
 
 // Bar K线数据
@@ -116,8 +116,8 @@ type Bar struct {
 
 // OrderBookLevel 订单簿层级
 type OrderBookLevel struct {
-	Price  float64 `json:"price"`
-	Size   float64 `json:"size"`
+	Price float64 `json:"price"`
+	Size  float64 `json:"size"`
 }
 
 // OrderBook 订单簿
@@ -131,34 +131,34 @@ type OrderBook struct {
 
 // Balance 余额
 type Balance struct {
-	Currency   string  `json:"currency"`
-	Total      float64 `json:"total"`
-	Available  float64 `json:"available"`
-	Frozen     float64 `json:"frozen"`
-	Timestamp  time.Time `json:"timestamp"`
+	Currency  string    `json:"currency"`
+	Total     float64   `json:"total"`
+	Available float64   `json:"available"`
+	Frozen    float64   `json:"frozen"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // Account 账户信息
 type Account struct {
-	TotalEquity     float64            `json:"total_equity"`
-	TotalMargin     float64            `json:"total_margin"`
-	TotalAvailable  float64            `json:"total_available"`
-	TotalPnL        float64            `json:"total_pnl"`
-	TotalUnrealizedPnL float64         `json:"total_unrealized_pnl"`
-	TotalRealizedPnL   float64         `json:"total_realized_pnl"`
-	Balance          map[string]Balance `json:"balance"`
-	Positions        []*Position        `json:"positions"`
-	Timestamp        time.Time         `json:"timestamp"`
+	TotalEquity        float64            `json:"total_equity"`
+	TotalMargin        float64            `json:"total_margin"`
+	TotalAvailable     float64            `json:"total_available"`
+	TotalPnL           float64            `json:"total_pnl"`
+	TotalUnrealizedPnL float64            `json:"total_unrealized_pnl"`
+	TotalRealizedPnL   float64            `json:"total_realized_pnl"`
+	Balance            map[string]Balance `json:"balance"`
+	Positions          []*Position        `json:"positions"`
+	Timestamp          time.Time          `json:"timestamp"`
 }
 
 // SignalType 信号类型
 type SignalType string
 
 const (
-	SignalTypeBuy      SignalType = "buy"      // 买入信号
-	SignalTypeSell     SignalType = "sell"     // 卖出信号
-	SignalTypeHold     SignalType = "hold"     // 持有信号
-	SignalTypeExit     SignalType = "exit"     // 退出信号
+	SignalTypeBuy  SignalType = "buy"  // 买入信号
+	SignalTypeSell SignalType = "sell" // 卖出信号
+	SignalTypeHold SignalType = "hold" // 持有信号
+	SignalTypeExit SignalType = "exit" // 退出信号
 )
 
 // Signal 交易信号
@@ -214,19 +214,19 @@ const (
 
 // AlgoOrder 算法单（条件单/止盈止损）
 type AlgoOrder struct {
-	AlgoID      string        `json:"algo_id"`
-	Symbol      string        `json:"symbol"`
-	Side        OrderSide     `json:"side"`
-	OrdType     AlgoOrderType `json:"ord_type"`
-	Size        float64       `json:"size"`
-	SlTriggerPx float64       `json:"sl_trigger_px"` // 止损触发价
-	SlOrderPx   float64       `json:"sl_order_px"`   // 止损委托价（-1=市价）
-	TpTriggerPx float64       `json:"tp_trigger_px"` // 止盈触发价
-	TpOrderPx   float64       `json:"tp_order_px"`   // 止盈委托价（-1=市价）
-	CloseFraction float64     `json:"close_fraction"` // 平仓比例（0-1）
-	ClientID    string        `json:"client_id"`
-	TdMode      string        `json:"td_mode"` // 保证金模式
-	State       string        `json:"state"`   // 状态
+	AlgoID        string        `json:"algo_id"`
+	Symbol        string        `json:"symbol"`
+	Side          OrderSide     `json:"side"`
+	OrdType       AlgoOrderType `json:"ord_type"`
+	Size          float64       `json:"size"`
+	SlTriggerPx   float64       `json:"sl_trigger_px"`  // 止损触发价
+	SlOrderPx     float64       `json:"sl_order_px"`    // 止损委托价（-1=市价）
+	TpTriggerPx   float64       `json:"tp_trigger_px"`  // 止盈触发价
+	TpOrderPx     float64       `json:"tp_order_px"`    // 止盈委托价（-1=市价）
+	CloseFraction float64       `json:"close_fraction"` // 平仓比例（0-1）
+	ClientID      string        `json:"client_id"`
+	TdMode        string        `json:"td_mode"` // 保证金模式
+	State         string        `json:"state"`   // 状态
 }
 
 // AlgoOrderResult 算法单下单结果
@@ -240,9 +240,9 @@ type AlgoOrderResult struct {
 
 // FundingRate 资金费率数据
 type FundingRate struct {
-	InstId           string    `json:"instId"`
-	FundingRate      float64   `json:"fundingRate"`
-	NextFundingRate  float64   `json:"nextFundingRate"`
+	InstId             string    `json:"instId"`
+	FundingRate        float64   `json:"fundingRate"`
+	NextFundingRate    float64   `json:"nextFundingRate"`
 	NextSettlementTime time.Time `json:"nextFundingTime"`
-	Timestamp        time.Time `json:"timestamp"`
+	Timestamp          time.Time `json:"timestamp"`
 }

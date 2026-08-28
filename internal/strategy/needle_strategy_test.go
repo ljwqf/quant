@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ljwqf/quant/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ljwqf/quant/pkg/types"
 )
 
 func TestNeedleStrategyTakeProfitProducesExitSignal(t *testing.T) {

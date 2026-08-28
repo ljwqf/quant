@@ -16,10 +16,10 @@ type Indicator interface {
 
 // IndicatorResult 指标计算结果
 type IndicatorResult struct {
-	Value     float64            `json:"value"`
-	Name      string             `json:"name"`
+	Value     float64                `json:"value"`
+	Name      string                 `json:"name"`
 	Params    map[string]interface{} `json:"params"`
-	Timestamp int64              `json:"timestamp"`
+	Timestamp int64                  `json:"timestamp"`
 }
 
 // IndicatorSet 指标集合
@@ -42,13 +42,13 @@ func (is *IndicatorSet) AddIndicator(name string, indicator Indicator) {
 // CalculateAll 计算所有指标
 func (is *IndicatorSet) CalculateAll(data []*types.Bar) (map[string]IndicatorResult, error) {
 	results := make(map[string]IndicatorResult)
-	
+
 	for name, indicator := range is.indicators {
 		value, err := indicator.Calculate(data)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		results[name] = IndicatorResult{
 			Value:     value,
 			Name:      indicator.GetName(),
@@ -56,7 +56,7 @@ func (is *IndicatorSet) CalculateAll(data []*types.Bar) (map[string]IndicatorRes
 			Timestamp: data[len(data)-1].Timestamp.Unix(),
 		}
 	}
-	
+
 	return results, nil
 }
 

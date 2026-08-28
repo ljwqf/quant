@@ -44,45 +44,45 @@ type TechnicalAnalysisData struct {
 
 // NewsAnalysisData 新闻分析数据
 type NewsAnalysisData struct {
-	Symbol    string
-	NewsTitle string
+	Symbol      string
+	NewsTitle   string
 	NewsContent string
-	Source     string
+	Source      string
 	PublishedAt string
-	Importance int
+	Importance  int
 }
 
 // EconomicAnalysisData 经济分析数据
 type EconomicAnalysisData struct {
-	EventName       string
-	EventDate       string
-	Actual         float64
-	Forecast       float64
-	Previous       float64
-	Currency       string
-	Importance     int
+	EventName  string
+	EventDate  string
+	Actual     float64
+	Forecast   float64
+	Previous   float64
+	Currency   string
+	Importance int
 }
 
 // TradeDecisionData 交易决策数据
 type TradeDecisionData struct {
-	Symbol           string
-	Side             string
-	EntryPrice       float64
-	StopLoss         float64
-	TakeProfit       float64
-	PositionSize     float64
-	CurrentPrice     float64
-	TimeFrame        string
-	RiskRewardRatio  float64
-	MarketCondition  string
+	Symbol          string
+	Side            string
+	EntryPrice      float64
+	StopLoss        float64
+	TakeProfit      float64
+	PositionSize    float64
+	CurrentPrice    float64
+	TimeFrame       string
+	RiskRewardRatio float64
+	MarketCondition string
 }
 
 // OrderData 订单数据
 type OrderData struct {
-	Orders           []map[string]interface{}
-	TimeRange        string
-	AnalysisType     string // active, historical, all
-	Symbol           string
+	Orders       []map[string]interface{}
+	TimeRange    string
+	AnalysisType string // active, historical, all
+	Symbol       string
 }
 
 // GetTechnicalAnalysisPrompt 获取技术分析提示词
@@ -352,14 +352,14 @@ func GetOrderAnalysisPrompt(data *OrderData) *PromptTemplate {
 func ParseAnalysisResult(content string) map[string]string {
 	result := make(map[string]string)
 	lines := strings.Split(content, "\n")
-	
+
 	var currentKey string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		if strings.Contains(line, "：") {
 			parts := strings.SplitN(line, "：", 2)
 			if len(parts) == 2 {
@@ -376,6 +376,6 @@ func ParseAnalysisResult(content string) map[string]string {
 			}
 		}
 	}
-	
+
 	return result
 }

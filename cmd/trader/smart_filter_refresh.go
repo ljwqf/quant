@@ -29,14 +29,14 @@ type smartFilterSnapshot struct {
 }
 
 type smartFilterRefreshConfig struct {
-	Enabled              bool
-	Source               string
-	Interval             time.Duration
-	FilePath             string
-	HTTPURL              string
-	HTTPTimeout          time.Duration
-	CryptoQuantAsset     string
-	CryptoQuantAPIKey    string
+	Enabled           bool
+	Source            string
+	Interval          time.Duration
+	FilePath          string
+	HTTPURL           string
+	HTTPTimeout       time.Duration
+	CryptoQuantAsset  string
+	CryptoQuantAPIKey string
 }
 
 type OnChainDataUpdater interface {
@@ -112,8 +112,6 @@ func startSmartFilterAutoRefresh(filter *strategy.SmartFilter, cfg *smartFilterR
 		})
 	}
 }
-
-
 
 func loadSmartFilterSnapshot(cfg smartFilterRefreshConfig) (smartFilterSnapshot, error) {
 	snapshot, _, err := loadSmartFilterSnapshotWithSource(cfg)

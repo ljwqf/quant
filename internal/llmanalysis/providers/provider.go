@@ -38,16 +38,16 @@ type Usage struct {
 type Provider interface {
 	// Name 获取提供商名称
 	Name() string
-	
+
 	// Chat 发送聊天请求
 	Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
-	
+
 	// SetAPIKey 设置 API 密钥
 	SetAPIKey(apiKey string)
-	
+
 	// SetBaseURL 设置基础 URL
 	SetBaseURL(baseURL string)
-	
+
 	// SetTimeout 设置超时时间
 	SetTimeout(timeout time.Duration)
 }

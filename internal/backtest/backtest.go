@@ -20,22 +20,22 @@ type Strategy interface {
 
 // Result 回测结果
 type Result struct {
-	TotalTrades       int     `json:"total_trades"`
-	WinTrades         int     `json:"win_trades"`
-	LossTrades        int     `json:"loss_trades"`
-	WinRate           float64 `json:"win_rate"`
-	TotalPnL          float64 `json:"total_pnl"`
-	MaxDrawdown       float64 `json:"max_drawdown"`
-	SharpeRatio       float64 `json:"sharpe_ratio"`
-	AverageWin        float64 `json:"average_win"`
-	AverageLoss       float64 `json:"average_loss"`
-	ProfitFactor      float64 `json:"profit_factor"`
-	StartTime         time.Time `json:"start_time"`
-	EndTime           time.Time `json:"end_time"`
-	InitialBalance    float64 `json:"initial_balance"`
-	FinalBalance      float64 `json:"final_balance"`
-	EquityCurve       []EquityPoint `json:"equity_curve"`
-	Trades            []Trade `json:"trades"`
+	TotalTrades    int           `json:"total_trades"`
+	WinTrades      int           `json:"win_trades"`
+	LossTrades     int           `json:"loss_trades"`
+	WinRate        float64       `json:"win_rate"`
+	TotalPnL       float64       `json:"total_pnl"`
+	MaxDrawdown    float64       `json:"max_drawdown"`
+	SharpeRatio    float64       `json:"sharpe_ratio"`
+	AverageWin     float64       `json:"average_win"`
+	AverageLoss    float64       `json:"average_loss"`
+	ProfitFactor   float64       `json:"profit_factor"`
+	StartTime      time.Time     `json:"start_time"`
+	EndTime        time.Time     `json:"end_time"`
+	InitialBalance float64       `json:"initial_balance"`
+	FinalBalance   float64       `json:"final_balance"`
+	EquityCurve    []EquityPoint `json:"equity_curve"`
+	Trades         []Trade       `json:"trades"`
 }
 
 // EquityPoint 权益曲线点
@@ -46,28 +46,28 @@ type EquityPoint struct {
 
 // Trade 回测交易记录
 type Trade struct {
-	ID        string      `json:"id"`
-	Symbol    string      `json:"symbol"`
-	Side      types.OrderSide `json:"side"`
-	EntryPrice float64     `json:"entry_price"`
-	ExitPrice  float64     `json:"exit_price"`
-	Quantity   float64     `json:"quantity"`
-	PnL        float64     `json:"pnl"`
-	PnLPercent float64     `json:"pnl_percent"`
-	EntryTime  time.Time   `json:"entry_time"`
-	ExitTime   time.Time   `json:"exit_time"`
-	HoldingPeriod time.Duration `json:"holding_period"`
+	ID            string          `json:"id"`
+	Symbol        string          `json:"symbol"`
+	Side          types.OrderSide `json:"side"`
+	EntryPrice    float64         `json:"entry_price"`
+	ExitPrice     float64         `json:"exit_price"`
+	Quantity      float64         `json:"quantity"`
+	PnL           float64         `json:"pnl"`
+	PnLPercent    float64         `json:"pnl_percent"`
+	EntryTime     time.Time       `json:"entry_time"`
+	ExitTime      time.Time       `json:"exit_time"`
+	HoldingPeriod time.Duration   `json:"holding_period"`
 }
 
 // Engine 回测引擎
 type Engine struct {
-	strategy    Strategy
-	dataManager *DataManager
-	simulator   *Simulator
-	result      *Result
+	strategy       Strategy
+	dataManager    *DataManager
+	simulator      *Simulator
+	result         *Result
 	initialBalance float64
-	startTime   time.Time
-	endTime     time.Time
+	startTime      time.Time
+	endTime        time.Time
 }
 
 // NewEngine 创建回测引擎
@@ -76,9 +76,9 @@ func NewEngine(strategy Strategy, initialBalance float64) *Engine {
 		strategy:    strategy,
 		dataManager: NewDataManager(),
 		simulator:   NewSimulator(initialBalance),
-		result:      &Result{
-			EquityCurve:   make([]EquityPoint, 0),
-			Trades:        make([]Trade, 0),
+		result: &Result{
+			EquityCurve:    make([]EquityPoint, 0),
+			Trades:         make([]Trade, 0),
 			InitialBalance: initialBalance,
 		},
 		initialBalance: initialBalance,

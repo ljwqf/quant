@@ -25,4 +25,3 @@ func TestNormalizeMarketSymbol(t *testing.T) {
 		assert.Equal(t, tc.expected, result)
 	}
 }
-

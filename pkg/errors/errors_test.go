@@ -108,44 +108,44 @@ func TestStandardError(t *testing.T) {
 
 func TestHelperFunctions(t *testing.T) {
 	tests := []struct {
-		name     string
-		fn       func(string, error, map[string]interface{}) *AppError
-		errType  ErrorType
+		name    string
+		fn      func(string, error, map[string]interface{}) *AppError
+		errType ErrorType
 	}{
 		{
-			name:     "NewNetworkError",
-			fn:       NewNetworkError,
-			errType:  ErrorTypeNetwork,
+			name:    "NewNetworkError",
+			fn:      NewNetworkError,
+			errType: ErrorTypeNetwork,
 		},
 		{
-			name:     "NewExchangeError",
-			fn:       NewExchangeError,
-			errType:  ErrorTypeExchange,
+			name:    "NewExchangeError",
+			fn:      NewExchangeError,
+			errType: ErrorTypeExchange,
 		},
 		{
-			name:     "NewStrategyError",
-			fn:       NewStrategyError,
-			errType:  ErrorTypeStrategy,
+			name:    "NewStrategyError",
+			fn:      NewStrategyError,
+			errType: ErrorTypeStrategy,
 		},
 		{
-			name:     "NewRiskError",
-			fn:       NewRiskError,
-			errType:  ErrorTypeRisk,
+			name:    "NewRiskError",
+			fn:      NewRiskError,
+			errType: ErrorTypeRisk,
 		},
 		{
-			name:     "NewExecutionError",
-			fn:       NewExecutionError,
-			errType:  ErrorTypeExecution,
+			name:    "NewExecutionError",
+			fn:      NewExecutionError,
+			errType: ErrorTypeExecution,
 		},
 		{
-			name:     "NewValidationError",
-			fn:       NewValidationError,
-			errType:  ErrorTypeValidation,
+			name:    "NewValidationError",
+			fn:      NewValidationError,
+			errType: ErrorTypeValidation,
 		},
 		{
-			name:     "NewInternalError",
-			fn:       NewInternalError,
-			errType:  ErrorTypeInternal,
+			name:    "NewInternalError",
+			fn:      NewInternalError,
+			errType: ErrorTypeInternal,
 		},
 	}
 

@@ -27,8 +27,8 @@ type RealTimePnL struct {
 	isSimulationMode       bool
 	simulationRequestCount int
 	maxSimulationRequests  int
-	circuitBreakerActive   bool          // 熔断器：网络故障时暂停请求
-	circuitBreakerUntil    time.Time     // 熔断截止时间
+	circuitBreakerActive   bool      // 熔断器：网络故障时暂停请求
+	circuitBreakerUntil    time.Time // 熔断截止时间
 }
 
 // PnLPoint P&L数据点

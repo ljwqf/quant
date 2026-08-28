@@ -8,16 +8,16 @@ import (
 
 // MACD 移动平均线收敛发散指标
 type MACD struct {
-	fastPeriod  int
-	slowPeriod  int
+	fastPeriod   int
+	slowPeriod   int
 	signalPeriod int
 }
 
 // NewMACD 创建MACD指标
 func NewMACD(fastPeriod, slowPeriod, signalPeriod int) *MACD {
 	return &MACD{
-		fastPeriod:  fastPeriod,
-		slowPeriod:  slowPeriod,
+		fastPeriod:   fastPeriod,
+		slowPeriod:   slowPeriod,
 		signalPeriod: signalPeriod,
 	}
 }

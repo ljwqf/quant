@@ -24,24 +24,24 @@ const (
 
 // Notification 通知消息结构
 type Notification struct {
-	ID        string              `json:"id"`
-	Type      NotificationType    `json:"type"`
+	ID        string               `json:"id"`
+	Type      NotificationType     `json:"type"`
 	Priority  NotificationPriority `json:"priority"`
-	Title     string              `json:"title"`
-	Message   string              `json:"message"`
-	Channels  []string            `json:"channels,omitempty"`
-	Metadata  map[string]string   `json:"metadata,omitempty"`
-	CreatedAt time.Time           `json:"created_at"`
+	Title     string               `json:"title"`
+	Message   string               `json:"message"`
+	Channels  []string             `json:"channels,omitempty"`
+	Metadata  map[string]string    `json:"metadata,omitempty"`
+	CreatedAt time.Time            `json:"created_at"`
 }
 
 // NotificationChannel 通知渠道接口
 type NotificationChannel interface {
 	// Name 返回渠道名称
 	Name() string
-	
+
 	// Send 发送通知
 	Send(notification *Notification) error
-	
+
 	// IsEnabled 检查渠道是否启用
 	IsEnabled() bool
 }
