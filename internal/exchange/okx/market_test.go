@@ -82,9 +82,11 @@ func TestHandleMarketData_Candle(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	// handleCandleData looks up handlers with normalizeBarInterval(item.Bar),
+	// which maps "1m" -> "1M" (OKX candle channel uses uppercase M).
 	client.barHandlers = map[string]map[string][]func(*types.Bar){
 		"BTC-USDT": {
-			"1m": []func(*types.Bar){
+			"1M": []func(*types.Bar){
 				func(bar *types.Bar) {
 					receivedBar = bar
 					wg.Done()
@@ -97,7 +99,17 @@ func TestHandleMarketData_Candle(t *testing.T) {
 
 	client.handleMarketData("candle1m", data)
 
-	wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("candle handler was not called")
+	}
 
 	assert.NotNil(t, receivedBar)
 	assert.Equal(t, "BTC-USDT", receivedBar.Symbol)
