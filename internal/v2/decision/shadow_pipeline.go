@@ -2,6 +2,7 @@ package decision
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -193,8 +194,9 @@ func (p *ShadowPipeline) Flush() error {
 }
 
 func (p *ShadowPipeline) Close() error {
-	p.Flush()
-	return p.shadowLog.Close()
+	// Close both loggers so their file descriptors are released before the
+	// caller removes a temporary log directory (notably on Windows).
+	return errors.Join(p.missLogger.Close(), p.shadowLog.Close())
 }
 
 func inferMacro(snapshot events.FactorSnapshot) events.MacroState {
